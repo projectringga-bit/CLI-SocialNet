@@ -3,26 +3,10 @@ import hashlib
 import secrets
 
 import db
+from utils import verify_password, validate_username, validate_password
 
 
 current_user = None
-
-
-def hash_password(password, salt=None):
-    if salt is None:
-        salt = secrets.token_hex(32)
-            
-    pass_salt = password + salt
-    hash = hashlib.sha256(pass_salt.encode()).hexdigest()
-
-    return hash, salt
-        
-def verify_password(password, hashed_password, salt):
-    new_hash, _ = hash_password(password, salt)
-    if new_hash == hashed_password:
-        return True
-    
-    return False
 
 
 def get_current_user():
@@ -35,28 +19,20 @@ def is_logged():
 
 
 def register(username, password):
-    if not username:
-        return False, "Username cannot be empty."
-
-    if len(username) < 3:
-        return False, "Username must be at least 3 characters long."
-
-    if len(username) > 20:
-        return False, "Username cannot be longer than 20 characters."
-
-    if not re.match(r"^[a-zA-Z0-9_]+$", username):
-        return False, "Username can only contain letters, numbers, and underscores."
-
-    if not password:
-        return False, "Password cannot be empty."
-
-    if len(password) < 6:
-        return False, "Password must be at least 6 characters long."
+    valid, error = validate_username(username)
+    if not valid:
+        return False, error
     
-    if db.create_user(username, password):
-        return True, "User registered successfully."
+    valid, error = validate_password(password)
+    if not valid:
+        return False, error
+    
+    success, result = db.create_user(username, password)
+
+    if success:
+        return True, result
     else:
-        return False, "Username is already taken."
+        return False, result
 
 
 def login(username, password):
@@ -64,32 +40,51 @@ def login(username, password):
     user = db.get_user_by_username(username)
 
     if user is None:
-        return False
+        return False, "Warning: User not found."
     
     if verify_password(password, user["password_hash"], user["password_salt"]):
         current_user = user
-        return True
+        return True, f"Welcome back, @{username}!"
+    
     else:
-        return False
+        return False, "Error: Wrong password."
 
 
 def logout():
     global current_user
     current_user = None
-    return True
+    return True, "You have been logged out."
 
 
 def delete_account(password):
     global current_user
 
     if not is_logged():
-        return False
+        return False, "Warning: No user is currently logged in."
     
     if not verify_password(password, current_user["password_hash"], current_user["password_salt"]):
-        return False
+        return False, "Error: Incorrect password. Account deletion aborted."
 
     db.delete_user(current_user["id"])
 
     logout()
 
-    return True
+    return True, "Your account has been deleted."
+
+
+def change_password(old_password, new_password):
+    global current_user
+
+    if not is_logged():
+        return False, "Warning: No user is currently logged in."
+    
+    if not verify_password(old_password, current_user["password_hash"], current_user["password_salt"]):
+        return False, "Error: Current password is incorrect."
+    
+    valid, error = validate_password(new_password)
+    if not valid:
+        return False, error
+    
+    db.change_user_password(current_user["id"], new_password)
+
+    return True, "Password changed successfully."

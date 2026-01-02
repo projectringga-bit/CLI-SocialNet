@@ -1,7 +1,8 @@
 import sqlite3
 import os
-import hashlib
-import secrets
+
+from utils import hash_password
+
 
 db_connection = None
 
@@ -38,28 +39,17 @@ def create_user(username, password): #TODO: limit or email verification
 
     cursor.execute("SELECT id FROM users WHERE username = ?", (username.lower(),))
     if cursor.fetchone() is not None:
-        print(f"Error: Username is already taken.")
-        return False
-    
-    def hash_password(password, salt=None):
-        if salt is None:
-            salt = secrets.token_hex(32)
-        
-        pass_salt = password + salt
-        hash = hashlib.sha256(pass_salt.encode()).hexdigest()
-
-        return hash, salt
+        return False, "Error: Username is already taken."
     
     password_hash, password_salt = hash_password(password)
     
     try:
         cursor.execute("INSERT INTO users (username, password_hash, password_salt) VALUES (?, ?, ?)", (username.lower(), password_hash, password_salt))
         connection.commit()
-        return True
+        return True, "User created successfully."
 
     except Exception as e:
-        print(f"Error: {e}")
-        return False
+        return False, f"Error: {e}"
     
 def get_user_by_username(username):
     connection = connect_db()
@@ -81,6 +71,21 @@ def delete_user(user_id):
         connection.commit()
         return True
 
+    except Exception as e:
+        print(f"Error: {e}")
+        return False
+    
+def change_user_password(user_id, new_password):
+    connection = connect_db()
+    cursor = connection.cursor()
+
+    new_password_hash, new_password_salt = hash_password(new_password)
+
+    try:
+        cursor.execute("UPDATE users SET password_hash = ?, password_salt = ? WHERE id = ?", (new_password_hash, new_password_salt, user_id))
+        connection.commit()
+        return True
+    
     except Exception as e:
         print(f"Error: {e}")
         return False

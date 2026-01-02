@@ -4,6 +4,7 @@ import getpass
 
 import db
 import auth
+from utils import clear
 
 
 def parse_command(input_command):
@@ -20,8 +21,12 @@ def parse_command(input_command):
 
 def execute_command(command, args): # returns True (continue) or False (exit)
     if command == "exit" or command == "quit":
+        if auth.is_logged():
+            auth.logout()
+
         return False
-    
+
+
     elif command == "help":
         print("""
 Available commands:
@@ -33,13 +38,12 @@ login <username> -> Login
 logout -> Logout the current user
 whoami -> Show the currently logged in user
 deleteaccount -> Delete the currently logged in user's account
+changepassword -> Change the password of the currently logged in user
 """)
-        
+
+
     elif command == "clear":
-        if sys.platform == "win32":
-            os.system("cls")
-        else:
-            os.system("clear")
+        clear()
 
 
     elif command == "register":
@@ -61,11 +65,8 @@ deleteaccount -> Delete the currently logged in user's account
             return True
         
         success, message = auth.register(username, password)
-        if success:
-            print(f"User @{username} registered successfully.")
-
-        else:
-            print(f"Error: {message}")
+        
+        print(message)
 
 
     elif command == "login":
@@ -80,20 +81,19 @@ deleteaccount -> Delete the currently logged in user's account
         username = args[0]
         password = getpass.getpass("Password: ")
 
-        if auth.login(username, password):
-            print(f"Welcome back, @{username}!")
+        success, message = auth.login(username, password)
 
-        else:
-            print("Error: Invalid username or password.")
+        print(message)
 
 
     elif command == "logout":
         if not auth.is_logged():
             print("Warning: No user is currently logged in.")
-            return
+            return True
 
-        if auth.logout():
-            print("You have been logged out.")
+        success, message = auth.logout()
+
+        print(message)
 
 
     elif command == "whoami":
@@ -118,19 +118,39 @@ deleteaccount -> Delete the currently logged in user's account
         if confirm == "yes":
             password = getpass.getpass("Enter your password to confirm: ")
 
-            if auth.delete_account(password):
-                print("Your account has been deleted.")
-            
-            else:
-                print("Error: Incorrect password. Account deletion aborted.")
+            success, message = auth.delete_account(password)
+
+            print(message)
                 
         else:
             print("Account deletion aborted.")
             return True
+        
+
+    elif command == "changepassword":
+        if not auth.is_logged():
+            print("Warning: No user is currently logged in.")
+            return True
+        
+        if len(args) != 0:
+            print("Usage: changepassword")
+            return True
+
+        old_password = getpass.getpass("Current Password: ")
+        new_password = getpass.getpass("New Password: ")
+        new_password_confirm = getpass.getpass("Confirm New Password: ")
+
+        if new_password != new_password_confirm:
+            print("Error: New passwords do not match.")
+            return True
+        
+        success, message = auth.change_password(old_password, new_password)
+
+        print(message)
 
 
     else:
-        print(f"Unknown command: {command}.")
+        print(f"Unknown command: {command}")
 
     return True
 
