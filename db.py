@@ -13,6 +13,12 @@ def connect_db():
 
     return db_connection
 
+def close_db():
+    global db_connection
+    if db_connection is not None:
+        db_connection.close()
+        db_connection = None
+
 def init_db():
     connection = connect_db()
     cursor = connection.cursor()
@@ -65,3 +71,16 @@ def get_user_by_username(username):
         return None # no username found
     
     return dict(row)
+
+def delete_user(user_id):
+    connection = connect_db()
+    cursor = connection.cursor()
+
+    try:
+        cursor.execute("DELETE FROM users WHERE id = ?", (user_id,))
+        connection.commit()
+        return True
+
+    except Exception as e:
+        print(f"Error: {e}")
+        return False
