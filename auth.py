@@ -107,3 +107,42 @@ def change_password(old_password, new_password):
     login(current_user["username"], new_password)
 
     return True, "Password changed successfully."
+
+def validate_session():
+    global current_user, current_token
+
+    if not current_token or current_token != current_token:
+        return False
+    
+    session = db.get_session(current_token)
+
+    if session is None:
+        current_user = None
+        current_token = None
+        return False
+    
+    now_timestamp = timestamp()
+
+    if session["expires"] < now_timestamp:
+        db.delete_session(current_token)
+        current_user = None
+        current_token = None
+        return False
+    
+    current_user = db.get_user_by_id(session["user_id"])
+
+    return True
+
+def change_display_name(new_display_name):
+    global current_user
+    if not is_logged():
+        return False, "No user is currently logged in."
+    
+    if len(new_display_name) > 50:
+        return False, "Display name cannot be longer than 50 characters."
+    
+    db.change_user_display_name(current_user["id"], new_display_name)
+    
+    current_user = db.get_user_by_id(current_user["id"])
+
+    return True, "Display name changed successfully."

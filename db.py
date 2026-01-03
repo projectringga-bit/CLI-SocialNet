@@ -23,13 +23,17 @@ def close_db():
 def init_db():
     connection = connect_db()
     cursor = connection.cursor()
-
+    
+    # users
     cursor.execute("CREATE TABLE IF NOT EXISTS users (" \
                     "id INTEGER PRIMARY KEY AUTOINCREMENT," \
                     "username TEXT UNIQUE NOT NULL," \
                     "password_hash TEXT NOT NULL," \
-                    "password_salt TEXT NOT NULL)" )
+                    "password_salt TEXT NOT NULL," \
+                    "created INTEGER NOT NULL," \
+                    "display_name TEXT DEFAULT '')")
     
+    # sessions
     cursor.execute("CREATE TABLE IF NOT EXISTS sessions (" \
                     "id INTEGER PRIMARY KEY AUTOINCREMENT," \
                     "user_id INTEGER NOT NULL," \
@@ -37,6 +41,16 @@ def init_db():
                     "created INTEGER NOT NULL," \
                     "expires INTEGER NOT NULL," \
                     "FOREIGN KEY (user_id) REFERENCES users(id))" )
+    
+    # posts
+    cursor.execute("CREATE TABLE IF NOT EXISTS posts (" \
+                    "id INTEGER PRIMARY KEY AUTOINCREMENT," \
+                    "user_id INTEGER NOT NULL," \
+                    "content TEXT NOT NULL," \
+                    "created INTEGER NOT NULL," \
+                    "deleted INTEGER DEFAULT 0," \
+                    "FOREIGN KEY (user_id) REFERENCES users(id))")
+    
 
     connection.commit()
 
@@ -51,9 +65,11 @@ def create_user(username, password): #TODO: limit or email verification
         return False, "Username is already taken."
     
     password_hash, password_salt = hash_password(password)
+
+    now_timestamp = timestamp()
     
     try:
-        cursor.execute("INSERT INTO users (username, password_hash, password_salt) VALUES (?, ?, ?)", (username.lower(), password_hash, password_salt))
+        cursor.execute("INSERT INTO users (username, password_hash, password_salt, created) VALUES (?, ?, ?, ?)", (username.lower(), password_hash, password_salt, now_timestamp))
         connection.commit()
         return True, "User created successfully."
 
@@ -68,6 +84,17 @@ def get_user_by_username(username):
     row = cursor.fetchone()
     if row is None:
         return None # no username found
+    
+    return dict(row)
+
+def get_user_by_id(user_id):
+    connection = connect_db()
+    cursor = connection.cursor()
+
+    cursor.execute("SELECT * FROM users WHERE id = ?", (user_id,))
+    row = cursor.fetchone()
+    if row is None:
+        return None
     
     return dict(row)
 
@@ -114,6 +141,17 @@ def create_session(user_id, token, expires):
         print(f"Error: {e}")
         return False
     
+def get_session(token):
+    connection = connect_db()
+    cursor = connection.cursor()
+
+    cursor.execute("SELECT * FROM sessions WHERE token = ?", (token,))
+    row = cursor.fetchone()
+    if row is None:
+        return None
+    
+    return dict(row)
+    
 def delete_session(token):
     connection = connect_db()
     cursor = connection.cursor()
@@ -148,6 +186,82 @@ def clean_expired_sessions():
 
     try:
         cursor.execute("DELETE FROM sessions WHERE expires < ?", (now_timestamp,))
+        connection.commit()
+        return True
+    
+    except Exception as e:
+        print(f"Error: {e}")
+        return False
+    
+def create_post(user_id, content):
+    connection = connect_db()
+    cursor = connection.cursor()
+
+    now_timestamp = timestamp()
+
+    try:
+        cursor.execute("INSERT INTO posts (user_id, content, created) VALUES (?, ?, ?)", (user_id, content, now_timestamp))
+        connection.commit()
+        return True, cursor.lastrowid
+    
+    except Exception as e:
+        print(f"Error: {e}")
+        return False, f"Error: {e}"
+    
+def get_post(post_id):
+    connection = connect_db()
+    cursor = connection.cursor()
+
+    cursor.execute("SELECT * FROM posts WHERE id = ? AND deleted = 0", (post_id,))
+    row = cursor.fetchone()
+    if row is None:
+        return None
+    
+    return dict(row)
+
+def delete_post(post_id):
+    connection = connect_db()
+    cursor = connection.cursor()
+
+    try:
+        cursor.execute("UPDATE posts SET deleted = 1 WHERE id = ?", (post_id,))
+        connection.commit()
+        return True
+    
+    except Exception as e:
+        print(f"Error: {e}")
+        return False
+    
+def get_feed_posts(user_id):
+    connection = connect_db()
+    cursor = connection.cursor()
+
+    cursor.execute("SELECT * FROM posts WHERE deleted = 0 ORDER BY created DESC")
+    
+    results = []
+    for row in cursor.fetchall():
+        results.append(dict(row))
+    
+    return results
+
+def get_posts_by_username(user_id):
+    connection = connect_db()
+    cursor = connection.cursor()
+
+    cursor.execute("SELECT * FROM posts WHERE user_id = ? AND deleted = 0 ORDER BY created DESC", (user_id,))
+
+    results = []
+    for row in cursor.fetchall():
+        results.append(dict(row))
+    
+    return results
+
+def change_user_display_name(user_id, new_display_name):
+    connection = connect_db()
+    cursor = connection.cursor()
+
+    try:
+        cursor.execute("UPDATE users SET display_name = ? WHERE id = ?", (new_display_name, user_id))
         connection.commit()
         return True
     
