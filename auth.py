@@ -3,10 +3,11 @@ import hashlib
 import secrets
 
 import db
-from utils import verify_password, validate_username, validate_password
+from utils import verify_password, validate_username, validate_password, generate_token, timestamp
 
 
 current_user = None
+current_token = None
 
 
 def get_current_user():
@@ -36,23 +37,37 @@ def register(username, password):
 
 
 def login(username, password):
-    global current_user
+    global current_user, current_token
     user = db.get_user_by_username(username)
 
     if user is None:
-        return False, "Warning: User not found."
+        return False, "User not found."
+    
+    time = timestamp()
     
     if verify_password(password, user["password_hash"], user["password_salt"]):
+        token = generate_token()
+        expires = time + 86400
+        db.create_session(user["id"], token, expires)
+
         current_user = user
+        current_token = token
+
         return True, f"Welcome back, @{username}!"
     
     else:
-        return False, "Error: Wrong password."
+        return False, "Wrong password."
 
 
 def logout():
-    global current_user
+    global current_user, current_token
+    
+    if current_token:
+        db.delete_session(current_token)
+    
     current_user = None
+    current_token = None
+
     return True, "You have been logged out."
 
 
@@ -60,10 +75,10 @@ def delete_account(password):
     global current_user
 
     if not is_logged():
-        return False, "Warning: No user is currently logged in."
+        return False, "No user is currently logged in."
     
     if not verify_password(password, current_user["password_hash"], current_user["password_salt"]):
-        return False, "Error: Incorrect password. Account deletion aborted."
+        return False, "Incorrect password. Account deletion aborted."
 
     db.delete_user(current_user["id"])
 
@@ -76,15 +91,19 @@ def change_password(old_password, new_password):
     global current_user
 
     if not is_logged():
-        return False, "Warning: No user is currently logged in."
+        return False, "No user is currently logged in."
     
     if not verify_password(old_password, current_user["password_hash"], current_user["password_salt"]):
-        return False, "Error: Current password is incorrect."
+        return False, "Current password is incorrect."
     
     valid, error = validate_password(new_password)
     if not valid:
         return False, error
     
     db.change_user_password(current_user["id"], new_password)
+
+    db.delete_user_sessions(current_user["id"])
+
+    login(current_user["username"], new_password)
 
     return True, "Password changed successfully."

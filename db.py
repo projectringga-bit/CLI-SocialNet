@@ -1,7 +1,7 @@
 import sqlite3
 import os
 
-from utils import hash_password
+from utils import hash_password, timestamp
 
 
 db_connection = None
@@ -29,6 +29,15 @@ def init_db():
                     "username TEXT UNIQUE NOT NULL," \
                     "password_hash TEXT NOT NULL," \
                     "password_salt TEXT NOT NULL)" )
+    
+    cursor.execute("CREATE TABLE IF NOT EXISTS sessions (" \
+                    "id INTEGER PRIMARY KEY AUTOINCREMENT," \
+                    "user_id INTEGER NOT NULL," \
+                    "token TEXT UNIQUE NOT NULL," \
+                    "created INTEGER NOT NULL," \
+                    "expires INTEGER NOT NULL," \
+                    "FOREIGN KEY (user_id) REFERENCES users(id))" )
+
     connection.commit()
 
     return True
@@ -39,7 +48,7 @@ def create_user(username, password): #TODO: limit or email verification
 
     cursor.execute("SELECT id FROM users WHERE username = ?", (username.lower(),))
     if cursor.fetchone() is not None:
-        return False, "Error: Username is already taken."
+        return False, "Username is already taken."
     
     password_hash, password_salt = hash_password(password)
     
@@ -83,6 +92,62 @@ def change_user_password(user_id, new_password):
 
     try:
         cursor.execute("UPDATE users SET password_hash = ?, password_salt = ? WHERE id = ?", (new_password_hash, new_password_salt, user_id))
+        connection.commit()
+        return True
+    
+    except Exception as e:
+        print(f"Error: {e}")
+        return False
+    
+def create_session(user_id, token, expires):
+    connection = connect_db()
+    cursor = connection.cursor()
+
+    now_timestamp = timestamp()
+
+    try:
+        cursor.execute("INSERT INTO sessions (user_id, token, created, expires) VALUES (?, ?, ?, ?)", (user_id, token, now_timestamp, expires))
+        connection.commit()
+        return True
+    
+    except Exception as e:
+        print(f"Error: {e}")
+        return False
+    
+def delete_session(token):
+    connection = connect_db()
+    cursor = connection.cursor()
+
+    try:
+        cursor.execute("DELETE FROM sessions WHERE token = ?", (token,))
+        connection.commit()
+        return True
+    
+    except Exception as e:
+        print(f"Error: {e}")
+        return False
+    
+def delete_user_sessions(user_id):
+    connection = connect_db()
+    cursor = connection.cursor()
+
+    try:
+        cursor.execute("DELETE FROM sessions WHERE user_id = ?", (user_id,))
+        connection.commit()
+        return True
+    
+    except Exception as e:
+        print(f"Error: {e}")
+        return False
+
+def clean_expired_sessions():
+    connection = connect_db()
+    cursor = connection.cursor()
+
+    now_timestamp = timestamp()
+
+    try:
+        cursor.execute("DELETE FROM sessions WHERE expires < ?", (now_timestamp,))
         connection.commit()
         return True
     

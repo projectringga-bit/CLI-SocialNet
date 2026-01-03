@@ -3,6 +3,8 @@ import secrets
 import re
 import os
 import sys
+import time
+import datetime
 
 
 def hash_password(password, salt=None):
@@ -21,6 +23,11 @@ def verify_password(password, hashed_password, salt):
         return True
     
     return False
+
+
+def generate_token():
+    token = secrets.token_hex(32)
+    return token
 
 
 def validate_username(username):
@@ -49,8 +56,45 @@ def validate_password(password):
     return True, ""
 
 
+def print_success(message):
+    print(f"\033[92m ✓ {message}\033[0m")  # green
+
+def print_error(message):
+    print(f"\033[91m ✗ {message}\033[0m")  # red
+
+def print_warning(message):
+    print(f"\033[93m ⚠ {message}\033[0m")  # yellow
+
+def print_info(message):
+    print(f"\033[94m i {message}\033[0m")  # blue
+
+def print_separator():
+    print("\033[90m" + "-" * 40 + "\033[0m")  # gray
+
+
+def print_banner():
+    banner = r"""
+   ________    ____   _____            _       ___   __     __ 
+  / ____/ /   /  _/  / ___/____  _____(_)___ _/ / | / /__  / /_
+ / /   / /    / /    \__ \/ __ \/ ___/ / __ `/ /  |/ / _ \/ __/
+/ /___/ /____/ /    ___/ / /_/ / /__/ / /_/ / / /|  /  __/ /_  
+\____/_____/___/   /____/\____/\___/_/\__,_/_/_/ |_/\___/\__/  
+ ______              _           __  ____         _      __  _  __    __                  __     
+/_  __/__ ______ _  (_)__  ___ _/ / / __/__  ____(_)__ _/ / / |/ /__ / /__    _____  ____/ /__   
+ / / / -_) __/  ' \/ / _ \/ _ `/ / _\ \/ _ \/ __/ / _ `/ / /    / -_) __/ |/|/ / _ \/ __/  '_/   
+/_/  \__/_/ /_/_/_/_/_//_/\_,_/_/ /___/\___/\__/_/\_,_/_/ /_/|_/\__/\__/|__,__/\___/_/ /_/\_\    
+                                                                                                 
+    """
+    print("\033[96m" + banner + "\033[0m")  # cyan
+
+
 def clear():
     if sys.platform == "win32":
         os.system("cls")
     else:
         os.system("clear")
+
+
+def timestamp():
+    timestamp = int(time.time())
+    return timestamp
