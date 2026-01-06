@@ -36,9 +36,12 @@ def delete_post(post_id):
     if post["user_id"] != user["id"]:
         return False, "You can only delete your own posts."
     
-    db.delete_post(post_id)
+    success, result = db.delete_post(post_id)
 
-    return True, "Post deleted."
+    if success:
+        return True, f"Post #{result} deleted."
+    else:
+        return False, result
 
 
 def get_home_feed():
@@ -67,3 +70,51 @@ def view_user_posts(username):
     posts = db.get_posts_by_username(user["id"])
 
     return posts
+
+
+def like_post(post_id):
+    if not auth.is_logged():
+        return False, "You must be logged in."
+    
+    post = db.get_post(post_id)
+
+    if post is None:
+        return False, "Post not found."
+    
+    user = auth.get_current_user()
+
+    success, result = db.like_post(user["id"], post_id)
+
+    if success:
+        return True, f"Post #{post_id} liked."
+    else:
+        return False, result
+    
+
+def unlike_post(post_id):
+    if not auth.is_logged():
+        return False, "You must be logged in."
+    
+    post = db.get_post(post_id)
+    if post is None:
+        return False, "Post not found."
+    
+    user = auth.get_current_user()
+
+    success, result = db.unlike_post(user["id"], post_id)
+
+    if success:
+        return True, f"Post #{post_id} unliked."
+    else:
+        return False, result
+    
+
+def get_likes(post_id):
+    post = db.get_post(post_id)
+
+    if post is None:
+        return False, "Post not found."
+    
+    likes = db.get_post_likes(post_id)
+
+    return likes, None

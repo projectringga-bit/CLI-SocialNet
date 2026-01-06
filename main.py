@@ -27,6 +27,10 @@ viewpost <post_id> -> View a specific post
 deletepost <post_id> -> Delete a specific post
 myposts -> View your own posts
 displayname <new_display_name> -> Change your display name
+like <post_id> -> Like a post
+unlike <post_id> -> Unlike a post
+likes <post_id> -> View likes on a post
+follow <username> -> Follow a user
 """)
     
 
@@ -288,6 +292,96 @@ def execute_command(command, args): # returns True (continue) or False (exit)
             print_error(message)
 
 
+    elif command == "like":
+        if not auth.is_logged():
+            print_warning("You must be logged in to like a post.")
+            return True
+        
+        if len(args) != 1:
+            print_error("Usage: like <post_id>")
+            return True
+        
+        post_id = args[0]
+
+        success, message = posts.like_post(post_id)
+
+        if success:
+            print_success(message)
+        else:
+            print_error(message)
+
+
+    elif command == "unlike":
+        if not auth.is_logged():
+            print_warning("You must be logged in to unlike a post.")
+            return True
+        
+        if len(args) != 1:
+            print_error("Usage: unlike <post_id>")
+            return True
+        
+        post_id = args[0]
+
+        success, message = posts.unlike_post(post_id)
+
+        if success:
+            print_success(message)
+        else:
+            print_error(message)
+
+
+    elif command == "likes":
+        if not auth.is_logged():
+            print_warning("You must be logged in to view likes on a post.")
+            return True
+        
+        if len(args) != 1:
+            print_error("Usage: likes <post_id>")
+            return True
+        
+        post_id = args[0]
+
+        likes, error = posts.get_likes(post_id)
+
+        if error:
+            print_error(error)
+            return True
+
+        if likes:
+            print(f"\nLikes on post #{post_id}:")
+            for like in likes:
+                print(f"    - @{like['username']}")
+
+        else:
+            print_info("No likes on this post yet.")
+
+
+    elif command == "follow":
+        if not auth.is_logged():
+            print_warning("You must be logged in to follow a user.")
+            return True
+        
+        if len(args) != 1:
+            print_error("Usage: follow <username>")
+            return True
+        
+        username = args[0].lstrip('@')
+
+        target = db.get_user_by_username(username)
+        if target is None:
+            print_error("User not found.")
+            return True
+        
+        current_user = auth.get_current_user()
+        
+        success, message = db.follow_user(current_user["id"], target["id"])
+
+        if success:
+            print_success(f"You are now following @{username}.")
+        else:
+            print_error(message)
+
+
     else:
         print_error(f"Unknown command: {command}")
         print_info("Type 'help' to see the list of available commands.")
@@ -309,6 +403,9 @@ def show_home():
             print(f"Post ID: {post['id']} by User ID: {post['user_id']}")
             print_separator()
             print("\n" + post["content"] + "\n")
+            print()
+            likes, _ = posts.get_likes(post['id'])
+            print(f"    Likes: {len(likes)} likes")
             print_separator()
 
         print_separator()

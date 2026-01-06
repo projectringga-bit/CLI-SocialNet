@@ -51,6 +51,26 @@ def init_db():
                     "deleted INTEGER DEFAULT 0," \
                     "FOREIGN KEY (user_id) REFERENCES users(id))")
     
+    # likes
+    cursor.execute("CREATE TABLE IF NOT EXISTS likes (" \
+                   "id INTEGER PRIMARY KEY AUTOINCREMENT," \
+                   "user_id INTEGER NOT NULL," \
+                   "post_id INTEGER NOT NULL," \
+                   "created INTEGER NOT NULL," \
+                   "FOREIGN KEY (user_id) REFERENCES users(id)," \
+                   "FOREIGN KEY (post_id) REFERENCES posts(id)," \
+                   "UNIQUE(user_id, post_id))")
+    
+    # follows
+    cursor.execute("CREATE TABLE IF NOT EXISTS follows (" \
+                   "id INTEGER PRIMARY KEY AUTOINCREMENT," \
+                   "follower_id INTEGER NOT NULL," \
+                   "followed_id INTEGER NOT NULL," \
+                   "created INTEGER NOT NULL," \
+                   "FOREIGN KEY (follower_id) REFERENCES users(id)," \
+                   "FOREIGN KEY (followed_id) REFERENCES users(id)," \
+                   "UNIQUE(follower_id, followed_id))")
+    
 
     connection.commit()
 
@@ -226,11 +246,11 @@ def delete_post(post_id):
     try:
         cursor.execute("UPDATE posts SET deleted = 1 WHERE id = ?", (post_id,))
         connection.commit()
-        return True
+        return True, cursor.lastrowid
     
     except Exception as e:
         print(f"Error: {e}")
-        return False
+        return False, f"Error: {e}"
     
 def get_feed_posts(user_id):
     connection = connect_db()
@@ -268,3 +288,74 @@ def change_user_display_name(user_id, new_display_name):
     except Exception as e:
         print(f"Error: {e}")
         return False
+    
+def like_post(user_id, post_id):
+    connection = connect_db()
+    cursor = connection.cursor()
+
+    cursor.execute("SELECT id FROM likes WHERE user_id = ? AND post_id = ?", (user_id, post_id))
+    if cursor.fetchone() is not None:
+        return False, "You have already liked this post."
+    
+    now_timestamp = timestamp()
+
+    try:
+        cursor.execute("INSERT INTO likes (user_id, post_id, created) VALUES (?, ?, ?)", (user_id, post_id, now_timestamp))
+        connection.commit()
+        return True, cursor.lastrowid
+
+    except Exception as e:
+        print(f"Error: {e}")
+        return False, f"Error: {e}"
+
+def unlike_post(user_id, post_id):
+    connection = connect_db()
+    cursor = connection.cursor()
+
+    cursor.execute("SELECT id FROM likes WHERE user_id = ? AND post_id = ?", (user_id, post_id))
+    row = cursor.fetchone()
+    if row is None:
+        return False, "You have not liked this post."
+    
+    try:
+        cursor.execute("DELETE FROM likes WHERE user_id = ? AND post_id = ?", (user_id, post_id))
+        connection.commit()
+        return True, row["id"]
+
+    except Exception as e:
+        print(f"Error: {e}")
+        return False, f"Error: {e}"
+
+def get_post_likes(post_id):
+    connection = connect_db()
+    cursor = connection.cursor()
+
+    cursor.execute("SELECT users.id, users.username FROM likes JOIN users ON likes.user_id = users.id WHERE likes.post_id = ? ORDER BY likes.created DESC", (post_id,))
+
+    results = []
+    for row in cursor.fetchall():
+        results.append(dict(row))
+
+    return results
+
+def follow_user(current_user_id, target_user_id):
+    if current_user_id == target_user_id:
+        return False, "You cannot follow yourself."
+    
+    connection = connect_db()
+    cursor = connection.cursor()
+
+    cursor.execute("SELECT id FROM follows WHERE follower_id = ? AND followed_id = ?", (current_user_id, target_user_id))
+    if cursor.fetchone() is not None:
+        return False, "You are already following this user."
+    
+    now_timestamp = timestamp()
+
+    try:
+        cursor.execute("INSERT INTO follows (follower_id, followed_id, created) VALUES (?, ?, ?)", (current_user_id, target_user_id, now_timestamp))
+        connection.commit()
+        return True, cursor.lastrowid
+    
+    except Exception as e:
+        print(f"Error: {e}")
+        return False, f"Error: {e}"
