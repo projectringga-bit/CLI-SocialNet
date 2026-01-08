@@ -1,5 +1,6 @@
 import db
 import auth
+from utils import print_post, print_separator
 
 
 def create_post(content):
@@ -55,10 +56,58 @@ def get_home_feed():
     return posts
 
 
+def get_my_posts():
+    if not auth.is_logged():
+        return []
+    
+    user = auth.get_current_user()
+    
+    return db.get_posts_by_id(user["id"])
+
+
 def view_post(post_id):
     post = db.get_post(post_id)
 
     return post
+
+
+def display_single_post(post_id):
+    post = view_post(post_id)
+
+    if post is None:
+        return False, "Post not found."
+    
+    print_post(post)
+
+    likes, _ = get_likes(post_id)
+    if likes:
+        usernames = []
+
+        for like in likes[:5]:
+            usernames.append(f"@{like['username']}")
+        
+        if len(likes) > 5:
+            usernames.append(f"and {len(likes) - 5} more")
+        
+        print(f"    Liked by: {', '.join(usernames)}")
+    
+    print_separator()
+
+    return True, None
+
+
+def display_multiple_posts(posts, title):
+    if not posts:
+        return False, "No posts to display."
+    
+    print(f"\n{title}:")
+
+    for post in posts:
+        print_post(post)
+
+    print_separator()
+
+    return True, None
 
 
 def view_user_posts(username):
@@ -67,7 +116,7 @@ def view_user_posts(username):
     if user is None:
         return []
     
-    posts = db.get_posts_by_username(user["id"])
+    posts = db.get_posts_by_id(user["id"])
 
     return posts
 

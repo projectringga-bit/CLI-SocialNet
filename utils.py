@@ -98,3 +98,48 @@ def clear():
 def timestamp():
     timestamp = int(time.time())
     return timestamp
+
+
+def format_timestamp(timestamp):
+    if timestamp is None:
+        return "unknown time"
+    
+    date_time = datetime.datetime.fromtimestamp(timestamp)
+    now = datetime.datetime.now()
+
+    difference = now - date_time
+
+    if difference.days == 0:
+        if difference.seconds < 60:
+            return "just now"
+        
+        elif difference.seconds < 3600:
+            minutes = difference.seconds // 60
+            return f"{minutes} minute(s) ago"
+        
+        else:
+            hours = difference.seconds // 3600
+            return f"{hours} hour(s) ago"
+        
+    elif difference.days == 1:
+        return "yesterday"
+    
+    elif difference.days < 7:
+        return f"{difference.days} day(s) ago"
+    
+    else:
+        return date_time.strftime("%Y-%m-%d")
+
+
+def print_post(data):
+    post_id = data.get("id", "")
+    username = data.get("username", "unknown")
+    content = data.get("content", "")
+    created_at = data.get("created", None)
+    likes = data.get("like_count", 0)
+
+    print_separator()
+    print(f"[{post_id}] @{username} • {format_timestamp(created_at)}")
+    print(f"    {content}")
+
+    print(f"    ❤️  {likes} Likes")

@@ -5,7 +5,8 @@ import getpass
 import db
 import auth
 import posts
-from utils import print_success, print_error, print_warning, print_info, print_separator, print_banner
+import social
+from utils import print_success, print_error, print_warning, print_info, print_separator, print_banner, print_post
 from utils import clear
 
 
@@ -31,6 +32,12 @@ like <post_id> -> Like a post
 unlike <post_id> -> Unlike a post
 likes <post_id> -> View likes on a post
 follow <username> -> Follow a user
+unfollow <username> -> Unfollow a user
+followers [<username>] -> View followers of a user (or yourself if no username is provided)
+bio <new_bio> -> Change your bio
+status <new_status> -> Change your status
+location <new_location> -> Change your location
+website <new_website> -> Change your website
 """)
     
 
@@ -226,16 +233,10 @@ def execute_command(command, args): # returns True (continue) or False (exit)
         
         post_id = args[0]
         
-        post = posts.view_post(post_id) # TODO: CHANGE THIS
-        if post is None:
-            print_error("Post not found.")
-        else:
-            user = auth.get_current_user() 
-            print_separator()
-            print(f"Post ID: {post['id']} by User ID: {post['user_id']}")
-            print_separator()
-            print("\n" + post["content"] + "\n")
-            print_separator()
+        success, message = posts.display_single_post(post_id)
+
+        if not success:
+            print_error(message)
 
 
     elif command == "deletepost":
@@ -264,30 +265,12 @@ def execute_command(command, args): # returns True (continue) or False (exit)
         
         user = auth.get_current_user()
 
-        my_posts = posts.view_user_posts(user["username"])
+        my_posts = posts.get_my_posts()
 
-        for post in my_posts:
-            print(f"Post ID: {post['id']}")
-            print_separator()
-            print("\n" + post["content"] + "\n")
-            print_separator()
-
-
-    elif command == "displayname":
-        if not auth.is_logged():
-            print_warning("You must be logged in to change your display name.")
-            return True
-        
-        if not args:
-            print_error("Usage: displayname <new_display_name>")
-            return True
-        
-        new_display_name = " ".join(args)
-
-        success, message = auth.change_display_name(new_display_name)
+        success, message = posts.display_multiple_posts(my_posts, f"@{user['username']}'s Posts")
 
         if success:
-            print_success(message)
+            pass
         else:
             print_error(message)
 
@@ -367,17 +350,159 @@ def execute_command(command, args): # returns True (continue) or False (exit)
         
         username = args[0].lstrip('@')
 
-        target = db.get_user_by_username(username)
-        if target is None:
-            print_error("User not found.")
-            return True
-        
-        current_user = auth.get_current_user()
-        
-        success, message = db.follow_user(current_user["id"], target["id"])
+        success, message = social.follow(username)
 
         if success:
             print_success(f"You are now following @{username}.")
+        else:
+            print_error(message)
+
+
+    elif command == "unfollow":
+        if not auth.is_logged():
+            print_warning("You must be logged in to unfollow a user.")
+            return True
+        
+        if len(args) != 1:
+            print_error("Usage: unfollow <username>")
+            return True
+        
+        username = args[0].lstrip('@')
+
+        success, message = social.unfollow(username)
+
+        if success:
+            print_success(f"You have unfollowed @{username}.")
+        else:
+            print_error(message)
+
+    
+    elif command == "followers":
+        if not auth.is_logged():
+            print_warning("You must be logged in to view your followers.")
+            return True
+        
+        if len(args) > 1:
+            print_error("Usage: followers [<username>]")
+            return True
+        
+        if len(args) == 1:
+            username = args[0].lstrip('@')
+        
+        else:
+            username = None
+            
+        success, followers = social.get_followers(username)
+
+        if success:
+            if username:
+                target = username
+            else:
+                current_user = auth.get_current_user()
+                target = current_user["username"]
+
+            if not followers:
+                print_info(f"@{target} has no followers.")
+                return True
+
+            print(f"\nFollowers of @{target}:")
+            for follower in followers:
+                print(f"    - @{follower['username']}")
+
+        else:
+            print_error(followers)
+
+        
+    elif command == "displayname":
+        if not auth.is_logged():
+            print_warning("You must be logged in to change your display name.")
+            return True
+        
+        if not args:
+            print_error("Usage: displayname <new_display_name>")
+            return True
+        
+        new_display_name = " ".join(args)
+
+        success, message = social.update_display_name(new_display_name)
+
+        if success:
+            print_success(message)
+        else:
+            print_error(message)
+
+    elif command == "bio":
+        if not auth.is_logged():
+            print_warning("You must be logged in to change your bio.")
+            return True
+        
+        if not args:
+            print_error("Usage: bio <new_bio>")
+            return True
+        
+        new_bio = " ".join(args)
+
+        success, message = social.update_bio(new_bio)
+
+        if success:
+            print_success(message)
+        else:
+            print_error(message)
+
+
+    elif command == "status":
+        if not auth.is_logged():
+            print_warning("You must be logged in to change your status.")
+            return True
+        
+        if not args:
+            print_error("Usage: status <new_status>")
+            return True
+        
+        new_status = " ".join(args)
+
+        success, message = social.update_status(new_status)
+
+        if success:
+            print_success(message)
+        else:
+            print_error(message)
+
+
+    elif command == "location":
+        if not auth.is_logged():
+            print_warning("You must be logged in to change your location.")
+            return True
+        
+        if not args:
+            print_error("Usage: location <new_location>")
+            return True
+        
+        new_location = " ".join(args)
+
+        success, message = social.update_location(new_location)
+
+        if success:
+            print_success(message)
+        else:
+            print_error(message)
+
+
+    elif command == "website":
+        if not auth.is_logged():
+            print_warning("You must be logged in to change your website.")
+            return True
+        
+        if not args:
+            print_error("Usage: website <new_website>")
+            return True
+        
+        new_website = " ".join(args)
+
+        success, message = social.update_website(new_website)
+
+        if success:
+            print_success(message)
         else:
             print_error(message)
 
@@ -398,16 +523,10 @@ def show_home():
 
         print_separator()
 
-        feed_posts = posts.get_home_feed() # TODO: CHANGE THIS
+        feed_posts = posts.get_home_feed()
         for post in feed_posts:
-            print(f"Post ID: {post['id']} by User ID: {post['user_id']}")
-            print_separator()
-            print("\n" + post["content"] + "\n")
-            print()
-            likes, _ = posts.get_likes(post['id'])
-            print(f"    Likes: {len(likes)} likes")
-            print_separator()
-
+                print_post(post)
+        
         print_separator()
 
     else:

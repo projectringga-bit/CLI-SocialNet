@@ -132,17 +132,3 @@ def validate_session():
     current_user = db.get_user_by_id(session["user_id"])
 
     return True
-
-def change_display_name(new_display_name):
-    global current_user
-    if not is_logged():
-        return False, "No user is currently logged in."
-    
-    if len(new_display_name) > 50:
-        return False, "Display name cannot be longer than 50 characters."
-    
-    db.change_user_display_name(current_user["id"], new_display_name)
-    
-    current_user = db.get_user_by_id(current_user["id"])
-
-    return True, "Display name changed successfully."

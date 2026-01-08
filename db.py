@@ -31,7 +31,11 @@ def init_db():
                     "password_hash TEXT NOT NULL," \
                     "password_salt TEXT NOT NULL," \
                     "created INTEGER NOT NULL," \
-                    "display_name TEXT DEFAULT '')")
+                    "display_name TEXT DEFAULT ''," \
+                    "bio TEXT DEFAULT ''," \
+                    "status TEXT DEFAULT ''," \
+                    "location TEXT DEFAULT ''," \
+                    "website TEXT DEFAULT '')")
     
     # sessions
     cursor.execute("CREATE TABLE IF NOT EXISTS sessions (" \
@@ -232,7 +236,7 @@ def get_post(post_id):
     connection = connect_db()
     cursor = connection.cursor()
 
-    cursor.execute("SELECT * FROM posts WHERE id = ? AND deleted = 0", (post_id,))
+    cursor.execute("SELECT posts.*, users.username, (SELECT COUNT(*) FROM likes WHERE likes.post_id = posts.id) AS like_count FROM posts JOIN users ON posts.user_id = users.id WHERE posts.id = ? AND posts.deleted = 0", (post_id,))
     row = cursor.fetchone()
     if row is None:
         return None
@@ -256,20 +260,19 @@ def get_feed_posts(user_id):
     connection = connect_db()
     cursor = connection.cursor()
 
-    cursor.execute("SELECT * FROM posts WHERE deleted = 0 ORDER BY created DESC")
-    
+    cursor.execute("SELECT posts.*, users.username, (SELECT COUNT(*) FROM likes WHERE likes.post_id = posts.id) AS like_count FROM posts JOIN users ON posts.user_id = users.id WHERE posts.deleted = 0 ORDER BY posts.created DESC")
     results = []
     for row in cursor.fetchall():
         results.append(dict(row))
     
     return results
 
-def get_posts_by_username(user_id):
+def get_posts_by_id(user_id):
     connection = connect_db()
     cursor = connection.cursor()
 
-    cursor.execute("SELECT * FROM posts WHERE user_id = ? AND deleted = 0 ORDER BY created DESC", (user_id,))
-
+    cursor.execute("SELECT posts.*, users.username, (SELECT COUNT(*) FROM likes WHERE post_id = posts.id) AS like_count FROM posts JOIN users ON posts.user_id = users.id WHERE posts.user_id = ? AND posts.deleted = 0 ORDER BY posts.created DESC", (user_id,))
+                   
     results = []
     for row in cursor.fetchall():
         results.append(dict(row))
@@ -338,6 +341,17 @@ def get_post_likes(post_id):
 
     return results
 
+def get_posts_count(user_id):
+    connection = connect_db()
+    cursor = connection.cursor()
+
+    cursor.execute("SELECT COUNT(*) AS count FROM posts WHERE user_id = ? AND deleted = 0", (user_id,))
+    row = cursor.fetchone()
+    if row is None:
+        return 0
+    
+    return row["count"]
+
 def follow_user(current_user_id, target_user_id):
     if current_user_id == target_user_id:
         return False, "You cannot follow yourself."
@@ -359,3 +373,91 @@ def follow_user(current_user_id, target_user_id):
     except Exception as e:
         print(f"Error: {e}")
         return False, f"Error: {e}"
+    
+def unfollow_user(current_user_id, target_user_id):
+    connection = connect_db()
+    cursor = connection.cursor()
+
+    cursor.execute("SELECT id FROM follows WHERE follower_id = ? AND followed_id = ?", (current_user_id, target_user_id))
+    row = cursor.fetchone()
+    if row is None:
+        return False, "You are not following this user."
+    
+    try:
+        cursor.execute("DELETE FROM follows WHERE follower_id = ? AND followed_id = ?", (current_user_id, target_user_id))
+        connection.commit()
+        return True, row["id"]
+    
+    except Exception as e:
+        print(f"Error: {e}")
+        return False, f"Error: {e}"
+    
+def get_followers(user_id):
+    connection = connect_db()
+    cursor = connection.cursor()
+
+    cursor.execute("SELECT users.id, users.username FROM follows JOIN users ON follows.follower_id = users.id WHERE follows.followed_id = ? ORDER BY follows.created DESC", (user_id,))
+
+    results = []
+    for row in cursor.fetchall():
+        results.append(dict(row))
+
+    return results
+
+def get_followers_count(user_id):
+    connection = connect_db()
+    cursor = connection.cursor()
+
+    cursor.execute("SELECT COUNT(*) AS count FROM follows WHERE followed_id = ?", (user_id,))
+    row = cursor.fetchone()
+    if row is None:
+        return 0
+    
+    return row["count"]
+
+def get_following_count(user_id):
+    connection = connect_db()
+    cursor = connection.cursor()
+
+    cursor.execute("SELECT COUNT(*) AS count FROM follows WHERE follower_id = ?", (user_id,))
+    row = cursor.fetchone()
+    if row is None:
+        return 0
+    
+    return row["count"]
+
+def is_following(follower_id, followed_id):
+    connection = connect_db()
+    cursor = connection.cursor()
+
+    cursor.execute("SELECT id FROM follows WHERE follower_id = ? AND followed_id = ?", (follower_id, followed_id))
+    row = cursor.fetchone()
+    if row is None:
+        return False
+    
+    return True
+
+def update_user(user_id, **kwargs):
+    connection = connect_db()
+    cursor = connection.cursor()
+
+    allowed_fields = ["bio", "status", "location", "website"]
+
+    updates = []
+    values = []
+
+    for field, value in kwargs.items():
+        if field in allowed_fields:
+            updates.append(f"{field} = ?")
+            values.append(value)
+    
+    if not updates:
+        return False
+    
+    values.append(user_id)
+    query = f"UPDATE users SET {', '.join(updates)} WHERE id = ?"
+
+    cursor.execute(query, values)
+    connection.commit()
+
+    return True
