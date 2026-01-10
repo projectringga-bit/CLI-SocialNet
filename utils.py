@@ -143,3 +143,40 @@ def print_post(data):
     print(f"    {content}")
 
     print(f"    ❤️  {likes} Likes")
+
+
+def print_profile(user):
+    username = user.get("username", "unknown")
+    display_name = user.get("display_name", "")
+    bio = user.get("bio", "No bio")
+    status = user.get("status", "")
+    location = user.get("location", "")
+    website = user.get("website", "")
+    created = user.get("created", None)
+    followers_count = user.get("followers_count", 0)
+    following_count = user.get("following_count", 0)
+    posts_count = user.get("posts_count", 0)
+
+    print_separator()
+
+    if display_name:
+        print(f"@{username} ({display_name})")
+
+    else:
+        print(f"@{username}")
+
+    if status:
+        print(f"  💭 Status: {status}")
+    
+    print(f"  📝 Bio: {bio}")
+
+    if location:
+        print(f"  📍 Location: {location}")
+
+    if website:
+        print(f"  🔗 Website: {website}")
+
+    print(f"\n  {posts_count} Posts • {followers_count} Followers • {following_count} Following")
+    print(f"  Joined: {format_timestamp(created)}")
+    
+    print_separator()

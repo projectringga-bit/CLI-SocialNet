@@ -40,7 +40,7 @@ def delete_post(post_id):
     success, result = db.delete_post(post_id)
 
     if success:
-        return True, f"Post #{result} deleted."
+        return True, f"Post #{post_id} deleted."
     else:
         return False, result
 

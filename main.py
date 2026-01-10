@@ -6,6 +6,7 @@ import db
 import auth
 import posts
 import social
+import admin
 from utils import print_success, print_error, print_warning, print_info, print_separator, print_banner, print_post
 from utils import clear
 
@@ -13,31 +14,34 @@ from utils import clear
 def help_message():
     print("""
 Available commands:
-help -> Show this help message
-exit, quit -> Exit the application
-clear -> Clear the console
-register <username> -> Register a new user
-login <username> -> Login
-logout -> Logout the current user
-whoami -> Show the currently logged in user
-deleteaccount -> Delete the currently logged in user's account
-changepassword -> Change the password of the currently logged in user
-home -> Show the home feed
-post <content> -> Create a new post
-viewpost <post_id> -> View a specific post
-deletepost <post_id> -> Delete a specific post
-myposts -> View your own posts
-displayname <new_display_name> -> Change your display name
-like <post_id> -> Like a post
-unlike <post_id> -> Unlike a post
-likes <post_id> -> View likes on a post
-follow <username> -> Follow a user
-unfollow <username> -> Unfollow a user
-followers [<username>] -> View followers of a user (or yourself if no username is provided)
-bio <new_bio> -> Change your bio
-status <new_status> -> Change your status
-location <new_location> -> Change your location
-website <new_website> -> Change your website
+
+help                            -> Show this help message
+exit, quit                      -> Exit the application
+clear                           -> Clear the console
+register <username>             -> Register a new user
+login <username>                -> Login
+logout                          -> Logout the current user
+whoami                          -> Show the currently logged in user
+deleteaccount                   -> Delete the currently logged in user's account
+changepassword                  -> Change the password of the currently logged in user
+home                            -> Show the home feed
+post <content>                  -> Create a new post
+viewpost <post_id>              -> View a specific post
+deletepost <post_id>            -> Delete a specific post
+myposts                         -> View your own posts
+displayname <new_display_name>  -> Change your display name
+like <post_id>                  -> Like a post
+unlike <post_id>                -> Unlike a post
+likes <post_id>                 -> View likes on a post
+follow <username>               -> Follow a user
+unfollow <username>             -> Unfollow a user
+followers [<username>]          -> View followers of a user (or yourself if no username is provided)
+following [<username>]          -> View users followed by a user (or yourself if no username is provided)
+bio <new_bio>                   -> Change your bio
+status <new_status>             -> Change your status
+location <new_location>         -> Change your location
+website <new_website>           -> Change your website
+profile [<username>]            -> View a user's profile (or your own if no username is provided)
 """)
     
 
@@ -379,38 +383,78 @@ def execute_command(command, args): # returns True (continue) or False (exit)
     
     elif command == "followers":
         if not auth.is_logged():
-            print_warning("You must be logged in to view your followers.")
+            print_warning("You must be logged in to view followers.")
             return True
         
         if len(args) > 1:
             print_error("Usage: followers [<username>]")
             return True
         
-        if len(args) == 1:
+        elif len(args) == 1:
             username = args[0].lstrip('@')
         
         else:
             username = None
             
-        success, followers = social.get_followers(username)
+        success, followers = social.display_followers(username)
 
         if success:
-            if username:
-                target = username
-            else:
-                current_user = auth.get_current_user()
-                target = current_user["username"]
+            print("\nFollowers:")
+            for user in followers:
+                print(f"    - {user}")
+        else:
+            print_info(followers)
 
-            if not followers:
-                print_info(f"@{target} has no followers.")
-                return True
 
-            print(f"\nFollowers of @{target}:")
-            for follower in followers:
-                print(f"    - @{follower['username']}")
+    elif command == "following":
+        if not auth.is_logged():
+            print_warning("You must be logged in to view following users.")
+            return True
+        
+        if len(args) > 1:
+            print_error("Usage: following [<username>]")
+            return True
+        
+        elif len(args) == 1:
+            username = args[0].lstrip('@')
 
         else:
-            print_error(followers)
+            username = None
+
+        success, following = social.display_following(username)
+
+        if success:
+            print("\nFollowing:")
+            for user in following:
+                print(f"    - {user}")
+
+        else:
+            print_info(following)
+
+
+    elif command == "profile":
+        if not auth.is_logged():
+            print_warning("You must be logged in to view profiles.")
+            return True
+        
+        if len(args) > 1:
+            print_error("Usage: profile [<username>]")
+            return True
+        
+        elif len(args) == 1:
+            username = args[0].lstrip('@')
+
+        else:
+            username = None
+
+        success, follow_status = social.display_profile(username)
+
+        if success:
+            if follow_status != None:
+                print_info(follow_status)
+
+        else:
+            print_error(follow_status)
 
         
     elif command == "displayname":
@@ -507,6 +551,74 @@ def execute_command(command, args): # returns True (continue) or False (exit)
             print_error(message)
 
 
+    # Admin commands
+    elif command == "admin":
+        if not auth.is_logged() or not auth.is_admin():
+            print_warning("You must be logged in as an admin to use admin commands.")
+            return True
+        
+        admin.print_banner_admin()
+
+
+    elif command == "ban":
+        if not auth.is_logged() or not auth.is_admin():
+            print_warning("You must be logged in as an admin to use admin commands.")
+            return True
+        
+        if len(args) < 1:
+            print_error("Usage: ban <username> [reason]")
+            return True
+        
+        username = args[0].lstrip('@')
+
+        reason = " ".join(args[1:])
+
+        success, message = admin.ban_user(username, reason)
+
+        if success:
+            print_success(message)
+        else:
+            print_error(message)
+
+
+    elif command == "unban":
+        if not auth.is_logged() or not auth.is_admin():
+            print_warning("You must be logged in as an admin to use admin commands.")
+            return True
+        
+        if len(args) != 1:
+            print_error("Usage: unban <username>")
+            return True
+        
+        username = args[0].lstrip('@')
+
+        success, message = admin.unban_user(username)
+
+        if success:
+            print_success(message)
+        else:
+            print_error(message)
+
+
+    elif command == "admin_delete":
+        if not auth.is_logged() or not auth.is_admin():
+            print_warning("You must be logged in as an admin to use admin commands.")
+            return True
+        
+        if len(args) != 1:
+            print_error("Usage: admin_delete <post_id>")
+            return True
+        
+        post_id = args[0]
+
+        success, message = admin.delete_post(post_id)
+
+        if success:
+            print_success(message)
+        else:
+            print_error(message)
+
+
     else:
         print_error(f"Unknown command: {command}")
         print_info("Type 'help' to see the list of available commands.")
@@ -545,9 +657,6 @@ def main():
     running = True
     while running:
         try:
-            if auth.is_logged() and not auth.validate_session():
-                print_warning("Your session has expired. Please log in again.")
-
             if auth.is_logged():
                 user = auth.get_current_user()
                 prompt = f"\n@{user['username']}> "
@@ -559,6 +668,10 @@ def main():
                 continue
 
             command, args = parse_command(command)
+
+            if auth.is_logged() and not auth.validate_session():
+                print_warning("Your session has expired. Please log in again.")
+                continue
 
             if command:
                 running = execute_command(command, args)

@@ -19,6 +19,14 @@ def is_logged():
     return current_user is not None
 
 
+def is_admin():
+    if current_user:
+        if current_user.get("is_admin", 0) == 1:
+            return True
+    
+    return False
+
+
 def register(username, password):
     valid, error = validate_username(username)
     if not valid:
@@ -42,6 +50,10 @@ def login(username, password):
 
     if user is None:
         return False, "User not found."
+    
+    if user.get("is_banned") == 1:
+        reason = user.get("ban_reason")
+        return False, f"Your account has been banned. Reason: {reason}"
     
     time = timestamp()
     
@@ -111,7 +123,7 @@ def change_password(old_password, new_password):
 def validate_session():
     global current_user, current_token
 
-    if not current_token or current_token != current_token:
+    if not current_token:
         return False
     
     session = db.get_session(current_token)
@@ -130,5 +142,9 @@ def validate_session():
         return False
     
     current_user = db.get_user_by_id(session["user_id"])
+
+    if current_user and current_user.get("is_banned") == 1:
+        logout()
+        return False
 
     return True

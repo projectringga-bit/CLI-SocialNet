@@ -2,6 +2,7 @@ import sqlite3
 import os
 
 from utils import hash_password, timestamp
+from config import DEFAULT_ADMIN_PASSWORD
 
 
 db_connection = None
@@ -35,7 +36,10 @@ def init_db():
                     "bio TEXT DEFAULT ''," \
                     "status TEXT DEFAULT ''," \
                     "location TEXT DEFAULT ''," \
-                    "website TEXT DEFAULT '')")
+                    "website TEXT DEFAULT ''," \
+                    "is_admin INTEGER DEFAULT 0," \
+                    "is_banned INTEGER DEFAULT 0," \
+                    "ban_reason TEXT DEFAULT '')")
     
     # sessions
     cursor.execute("CREATE TABLE IF NOT EXISTS sessions (" \
@@ -77,6 +81,8 @@ def init_db():
     
 
     connection.commit()
+
+    create_admin()
 
     return True
 
@@ -404,6 +410,18 @@ def get_followers(user_id):
 
     return results
 
+def get_following(user_id):
+    connection = connect_db()
+    cursor = connection.cursor()
+
+    cursor.execute("SELECT users.id, users.username FROM follows JOIN users ON follows.followed_id = users.id WHERE follows.follower_id = ? ORDER BY follows.created DESC", (user_id,))
+    
+    results = []
+    for row in cursor.fetchall():
+        results.append(dict(row))
+
+    return results
+
 def get_followers_count(user_id):
     connection = connect_db()
     cursor = connection.cursor()
@@ -441,7 +459,7 @@ def update_user(user_id, **kwargs):
     connection = connect_db()
     cursor = connection.cursor()
 
-    allowed_fields = ["bio", "status", "location", "website"]
+    allowed_fields = ["display_name", "bio", "status", "location", "website", "is_banned", "ban_reason"]
 
     updates = []
     values = []
@@ -461,3 +479,60 @@ def update_user(user_id, **kwargs):
     connection.commit()
 
     return True
+
+def create_admin():
+    connection = connect_db()
+    cursor = connection.cursor()
+
+    cursor.execute("SELECT id FROM users WHERE is_admin = 1")
+    admin = cursor.fetchone()
+
+    if admin is None:
+        password_hash, password_salt = hash_password(DEFAULT_ADMIN_PASSWORD)
+        now_timestamp = timestamp()
+
+        cursor.execute("INSERT INTO users (username, password_hash, password_salt, created, is_admin, bio) VALUES (?, ?, ?, ?, 1, ?)", ("admin", password_hash, password_salt, now_timestamp, "Admin"))
+        connection.commit()
+
+def get_statistics():
+    connection = connect_db()
+    cursor = connection.cursor()
+
+    stats = {}
+
+    cursor.execute("SELECT COUNT(*) AS user_count FROM users")
+    row = cursor.fetchone()
+    if row:
+        stats["user_count"] = row["user_count"]
+    else:
+        stats["user_count"] = 0
+
+    cursor.execute("SELECT COUNT(*) AS banned_count FROM users WHERE is_banned = 1")
+    row = cursor.fetchone()
+    if row:
+        stats["banned_count"] = row["banned_count"]
+    else:
+        stats["banned_count"] = 0
+
+    cursor.execute("SELECT COUNT(*) AS post_count FROM posts WHERE deleted = 0")
+    row = cursor.fetchone()
+    if row:
+        stats["post_count"] = row["post_count"]
+    else:
+        stats["post_count"] = 0
+
+    cursor.execute("SELECT COUNT(*) AS like_count FROM likes")
+    row = cursor.fetchone()
+    if row:
+        stats["like_count"] = row["like_count"]
+    else:
+        stats["like_count"] = 0
+
+    cursor.execute("SELECT COUNT(*) AS follow_count FROM follows")
+    row = cursor.fetchone()
+    if row:
+        stats["follow_count"] = row["follow_count"]
+    else:
+        stats["follow_count"] = 0
+
+    return stats

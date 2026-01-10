@@ -1,5 +1,6 @@
 import db
 import auth
+from utils import print_profile
 
 
 def follow(username):
@@ -51,6 +52,24 @@ def get_followers(username):
     return True, followers
 
 
+def get_following(username):
+    if username:
+        user = db.get_user_by_username(username)
+
+        if user is None:
+            return False, "User not found."
+        
+    else:
+        if not auth.is_logged():
+            return False, "You must be logged in."
+        
+        user = auth.get_current_user()
+
+    following = db.get_following(user["id"])
+
+    return True, following
+
+
 def get_profile(username):
     if username:
         user = db.get_user_by_username(username)
@@ -72,7 +91,7 @@ def get_profile(username):
         "status": user["status"] or '',
         "location": user["location"] or '',
         "website": user["website"] or '',
-        "created_at": user["created_at"],
+        "created": user["created"],
         "followers_count": db.get_followers_count(user["id"]),
         "following_count": db.get_following_count(user["id"]),
         "posts_count": db.get_posts_count(user["id"]),
@@ -152,3 +171,72 @@ def update_website(new_website):
     db.update_user(user["id"], website=new_website)
 
     return True, "Website updated."
+
+
+def display_followers(username):
+    success, followers = get_followers(username)
+
+    if success:
+        if username:
+            target = username
+        else:
+            current_user = auth.get_current_user()
+            target = current_user["username"]
+
+        if not followers:
+            return False, f"@{target} has no followers."
+
+        follower_list = []
+        for follower in followers:
+            follower_list.append(f"@{follower['username']}")
+
+        return True, follower_list
+    
+    else:
+        return False, followers
+    
+
+def display_following(username):
+    success, following = get_following(username)
+
+    if success:
+        if username:
+            target = username
+        else:
+            current_user = auth.get_current_user()
+            target = current_user["username"]
+    
+        if not following:
+            return True, f"@{target} is not following anyone."
+        
+        following_list = []
+        for user in following:
+            following_list.append(f"@{user['username']}")
+
+        return True, following_list
+    
+    else:
+        return False, following
+    
+
+def display_profile(username):
+    profile = get_profile(username)
+
+    if profile is None:
+        return False, "User not found."
+    
+    print_profile(profile)
+
+    if profile.get("is_following") and profile.get("follows_you"):
+        follow_status = "You and this user follow each other."
+    
+    elif profile.get("is_following"):
+        follow_status = "You are following this user."
+
+    elif profile.get("follows_you"):
+        follow_status = "This user follows you."
+
+    else:
+        follow_status = None
+
+    return True, follow_status
