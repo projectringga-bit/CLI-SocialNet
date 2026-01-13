@@ -15,33 +15,40 @@ def help_message():
     print("""
 Available commands:
 
-help                            -> Show this help message
-exit, quit                      -> Exit the application
-clear                           -> Clear the console
-register <username>             -> Register a new user
-login <username>                -> Login
-logout                          -> Logout the current user
-whoami                          -> Show the currently logged in user
-deleteaccount                   -> Delete the currently logged in user's account
-changepassword                  -> Change the password of the currently logged in user
-home                            -> Show the home feed
-post <content>                  -> Create a new post
-viewpost <post_id>              -> View a specific post
-deletepost <post_id>            -> Delete a specific post
-myposts                         -> View your own posts
-displayname <new_display_name>  -> Change your display name
-like <post_id>                  -> Like a post
-unlike <post_id>                -> Unlike a post
-likes <post_id>                 -> View likes on a post
-follow <username>               -> Follow a user
-unfollow <username>             -> Unfollow a user
-followers [<username>]          -> View followers of a user (or yourself if no username is provided)
-following [<username>]          -> View users followed by a user (or yourself if no username is provided)
-bio <new_bio>                   -> Change your bio
-status <new_status>             -> Change your status
-location <new_location>         -> Change your location
-website <new_website>           -> Change your website
-profile [<username>]            -> View a user's profile (or your own if no username is provided)
+help                             -> Show this help message
+exit, quit                       -> Exit the application
+clear                            -> Clear the console
+register <username>              -> Register a new user
+login <username>                 -> Login
+logout                           -> Logout the current user
+whoami                           -> Show the currently logged in user
+deleteaccount                    -> Delete the currently logged in user's account
+changepassword                   -> Change the password of the currently logged in user
+home                             -> Show the home feed
+feed [<page>]                    -> View your feed (posts from people you follow)
+explore [<page>]                 -> View the global feed
+post <content>                   -> Create a new post
+postimg <image_path> [<caption>] -> Create a new post with an image from a local path
+posturl <image_url> [<caption>]  -> Create a new post with an image from a URL
+viewpost <post_id>               -> View a specific post
+deletepost <post_id>             -> Delete a specific post
+myposts                          -> View your own posts
+displayname <new_display_name>   -> Change your display name
+like <post_id>                   -> Like a post
+unlike <post_id>                 -> Unlike a post
+likes <post_id>                  -> View likes on a post
+follow <username>                -> Follow a user
+unfollow <username>              -> Unfollow a user
+followers [<username>]           -> View followers of a user (or yourself if no username is provided)
+following [<username>]           -> View users followed by a user (or yourself if no username is provided)
+bio <new_bio>                    -> Change your bio
+status <new_status>              -> Change your status
+location <new_location>          -> Change your location
+website <new_website>            -> Change your website
+avatar <image_path>              -> Change your avatar using a local image path
+avatarurl <image_url>            -> Change your avatar using an image URL
+removeavatar                     -> Remove your avatar
+profile [<username>]             -> View a user's profile (or your own if no username is provided)
 """)
     
 
@@ -93,7 +100,49 @@ def execute_command(command, args): # returns True (continue) or False (exit)
     elif command == "home":
         show_home()
 
+
+    elif command == "feed":
+        page = 1
+
+        if not auth.is_logged():
+            print_warning("You must be logged in to view your feed.")
+            return True
+
+        if len(args) > 1:
+            print_error("Usage: feed [<page>]")
+            return True
+
+        if len(args) == 1:
+            try:
+                page = int(args[0])
+            except ValueError:
+                print_error("Page must be a number.")
+                return True
+            
+        postss = posts.get_feed(page=page)
+
+        posts.display_multiple_posts(postss, f"Your Feed - Page {page}")
+
     
+    elif command == "explore":
+        page = 1
+
+        if len(args) > 1:
+            print_error("Usage: explore [<page>]")
+            return True
+        
+        if len(args) == 1:
+            try:
+                page = int(args[0])
+            except ValueError:
+                print_error("Page must be a number.")
+                return True
+            
+        postss = posts.get_global_feed(page=page)
+
+        posts.display_multiple_posts(postss, f"Explore - Page {page}")
+    
+
     elif command == "whoami":
         show_status()
 
@@ -226,16 +275,65 @@ def execute_command(command, args): # returns True (continue) or False (exit)
             print_error(message)
 
 
-    elif command == "viewpost":
+    elif command == "postimg":
         if not auth.is_logged():
-            print_warning("You must be logged in to view a post.")
+            print_warning("You must be logged in to create a post.")
             return True
         
+        if len(args) == 0:
+            print_error("Usage: postimg <image_path> [<caption>]")
+            return True
+        
+        image_path = args[0]
+
+        content = ""
+
+        if len(args) > 1:
+            content = " ".join(args[1:])
+
+        success, message = posts.create_post(content, image_path=image_path)
+
+        if success:
+            print_success(message)
+        else:
+            print_error(message)
+
+
+    elif command == "posturl":
+        if not auth.is_logged():
+            print_warning("You must be logged in to create a post.")
+            return True
+        
+        if len(args) > 2:
+            print_error("Usage: posturl <image_url> [<caption>]")
+            return True
+        
+        image_url = args[0]
+
+        content = ""
+
+        if len(args) > 1:
+            content = " ".join(args[1:])
+
+        success, message = posts.create_post(content, image_url=image_url)
+
+        if success:
+            print_success(message)
+        else:
+            print_error(message)
+
+
+    elif command == "viewpost":        
         if len(args) != 1:
             print_error("Usage: viewpost <post_id>")
             return True
         
-        post_id = args[0]
+        try:
+            post_id = int(args[0])
+
+        except ValueError:
+            print_error("Post ID must be a number.")
+            return True
         
         success, message = posts.display_single_post(post_id)
 
@@ -263,13 +361,27 @@ def execute_command(command, args): # returns True (continue) or False (exit)
 
 
     elif command == "myposts":
+        page = 1
+
         if not auth.is_logged():
             print_warning("You must be logged in to view your posts.")
             return True
         
+        if len(args) > 1:
+            print_error("Usage: myposts [<page>]")
+            return True
+        
+        if len(args) == 1:
+            try:
+                page = int(args[0])
+
+            except ValueError:
+                print_error("Page must be a number.")
+                return True
+        
         user = auth.get_current_user()
 
-        my_posts = posts.get_my_posts()
+        my_posts = posts.get_my_posts(user['id'], page=page)
 
         success, message = posts.display_multiple_posts(my_posts, f"@{user['username']}'s Posts")
 
@@ -551,72 +663,122 @@ def execute_command(command, args): # returns True (continue) or False (exit)
             print_error(message)
 
 
+    elif command == "avatar":
+        if not auth.is_logged():
+            print_warning("You must be logged in to change your avatar.")
+            return True
+        
+        if len(args) != 1:
+            print_error("Usage: avatar <image_path>")
+            return True
+        
+        image_path = args[0]
+
+        success, message = social.update_avatar(avatar_path=image_path)
+
+        if success:
+            print_success(message)
+        else:
+            print_error(message)
+
+
+    elif command == "avatarurl":
+        if not auth.is_logged():
+            print_warning("You must be logged in to change your avatar.")
+            return True
+        
+        if len(args) != 1:
+            print_error("Usage: avatarurl <image_url>")
+            return True
+        
+        image_url = args[0]
+
+        success, message = social.update_avatar(avatar_url=image_url)
+
+        if success:
+            print_success(message)
+        else:
+            print_error(message)
+
+
+    elif command == "removeavatar":
+        if not auth.is_logged():
+            print_warning("You must be logged in to remove your avatar.")
+            return True
+        
+        if len(args) != 0:
+            print_error("Usage: removeavatar")
+            return True
+
+        success, message = social.remove_avatar()
+
+        if success:
+            print_success(message)
+        else:
+            print_error(message)
+
+
     # Admin commands
     elif command == "admin":
         if not auth.is_logged() or not auth.is_admin():
             print_warning("You must be logged in as an admin to use admin commands.")
             return True
         
-        admin.print_banner_admin()
-
-
-    elif command == "ban":
-        if not auth.is_logged() or not auth.is_admin():
-            print_warning("You must be logged in as an admin to use admin commands.")
+        if len(args) == 0:
+            admin.print_banner_admin()
             return True
         
-        if len(args) < 1:
-            print_error("Usage: ban <username> [reason]")
-            return True
-        
-        username = args[0].lstrip('@')
+        subcommand = args[0].lower()
+        args = args[1:]
 
-        reason = " ".join(args[1:])
 
-        success, message = admin.ban_user(username, reason)
+        if subcommand == "ban":
+            if len(args) < 1:
+                print_error("Usage: admin ban <username> [reason]")
+                return True
+            
+            username = args[0].lstrip('@')
 
-        if success:
-            print_success(message)
+            reason = " ".join(args[1:])
+
+            success, message = admin.ban_user(username, reason)
+
+            if success:
+                print_success(message)
+            else:
+                print_error(message)
+
+        elif subcommand == "unban":
+            if len(args) != 1:
+                print_error("Usage: admin unban <username>")
+                return True
+            
+            username = args[0].lstrip('@')
+
+            success, message = admin.unban_user(username)
+
+            if success:
+                print_success(message)
+            else:
+                print_error(message)
+
+        elif subcommand == "deletepost":
+            if len(args) != 1:
+                print_error("Usage: admin deletepost <post_id>")
+                return True
+            
+            post_id = args[0]
+
+            success, message = admin.delete_post(post_id)
+
+            if success:
+                print_success(message)
+            else:
+                print_error(message)
+
         else:
-            print_error(message)
-
-
-    elif command == "unban":
-        if not auth.is_logged() or not auth.is_admin():
-            print_warning("You must be logged in as an admin to use admin commands.")
-            return True
-        
-        if len(args) != 1:
-            print_error("Usage: unban <username>")
-            return True
-        
-        username = args[0].lstrip('@')
-
-        success, message = admin.unban_user(username)
-
-        if success:
-            print_success(message)
-        else:
-            print_error(message)
-
-
-    elif command == "admin_delete":
-        if not auth.is_logged() or not auth.is_admin():
-            print_warning("You must be logged in as an admin to use admin commands.")
-            return True
-        
-        if len(args) != 1:
-            print_error("Usage: admin_delete <post_id>")
-            return True
-        
-        post_id = args[0]
-
-        success, message = admin.delete_post(post_id)
-
-        if success:
-            print_success(message)
-        else:
-            print_error(message)
+            print_error(f"Unknown admin command: {subcommand}")
+            print_info("Type 'admin' to see available commands.")
 
 
     else:
@@ -631,13 +793,17 @@ def show_home():
     print_banner()
 
     if auth.is_logged():
-        print("\n Your Feed")
+        print("\n Your Feed (latest posts from people you follow)")
 
         print_separator()
 
-        feed_posts = posts.get_home_feed()
-        for post in feed_posts:
-                print_post(post)
+        feed_posts = posts.get_feed()
+        if feed_posts:
+            for post in feed_posts[:5]:
+                    print_post(post)
+
+        else:
+            print_info("Your feed is empty. Follow some users to see their posts here.")
         
         print_separator()
 

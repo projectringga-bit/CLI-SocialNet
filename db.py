@@ -37,6 +37,7 @@ def init_db():
                     "status TEXT DEFAULT ''," \
                     "location TEXT DEFAULT ''," \
                     "website TEXT DEFAULT ''," \
+                    "profile_ascii TEXT DEFAULT ''," \
                     "is_admin INTEGER DEFAULT 0," \
                     "is_banned INTEGER DEFAULT 0," \
                     "ban_reason TEXT DEFAULT '')")
@@ -55,6 +56,7 @@ def init_db():
                     "id INTEGER PRIMARY KEY AUTOINCREMENT," \
                     "user_id INTEGER NOT NULL," \
                     "content TEXT NOT NULL," \
+                    "image_ascii TEXT DEFAULT NULL," \
                     "created INTEGER NOT NULL," \
                     "deleted INTEGER DEFAULT 0," \
                     "FOREIGN KEY (user_id) REFERENCES users(id))")
@@ -223,14 +225,23 @@ def clean_expired_sessions():
         print(f"Error: {e}")
         return False
     
-def create_post(user_id, content):
+def create_post(user_id, content, image_ascii=None):
     connection = connect_db()
     cursor = connection.cursor()
 
     now_timestamp = timestamp()
 
+    cursor.execute("SELECT created FROM posts WHERE user_id = ? AND deleted = 0 ORDER BY created DESC LIMIT 1", (user_id,))
+    
+    last = cursor.fetchone()
+    if last:
+        time_since_last = now_timestamp - last["created"]
+        if time_since_last < 5:
+            wait = 5 - time_since_last
+            return False, f"You are posting too quickly. Please wait {wait} seconds."
+
     try:
-        cursor.execute("INSERT INTO posts (user_id, content, created) VALUES (?, ?, ?)", (user_id, content, now_timestamp))
+        cursor.execute("INSERT INTO posts (user_id, content, image_ascii, created) VALUES (?, ?, ?, ?)", (user_id, content, image_ascii, now_timestamp))
         connection.commit()
         return True, cursor.lastrowid
     
@@ -262,22 +273,35 @@ def delete_post(post_id):
         print(f"Error: {e}")
         return False, f"Error: {e}"
     
-def get_feed_posts(user_id):
+def get_feed_posts(user_id, limit=10, offset=0):
     connection = connect_db()
     cursor = connection.cursor()
 
-    cursor.execute("SELECT posts.*, users.username, (SELECT COUNT(*) FROM likes WHERE likes.post_id = posts.id) AS like_count FROM posts JOIN users ON posts.user_id = users.id WHERE posts.deleted = 0 ORDER BY posts.created DESC")
+    cursor.execute("SELECT posts.*, users.username, (SELECT COUNT(*) FROM likes WHERE likes.post_id = posts.id) AS like_count FROM posts JOIN users ON posts.user_id = users.id WHERE posts.deleted = 0 AND (posts.user_id = ? OR posts.user_id IN (SELECT followed_id FROM follows WHERE follower_id = ?)) ORDER BY posts.created DESC LIMIT ? OFFSET ?", (user_id, user_id, limit, offset))
     results = []
     for row in cursor.fetchall():
         results.append(dict(row))
     
     return results
 
-def get_posts_by_id(user_id):
+
+def get_global_feed_posts(limit=10, offset=0):
     connection = connect_db()
     cursor = connection.cursor()
 
-    cursor.execute("SELECT posts.*, users.username, (SELECT COUNT(*) FROM likes WHERE post_id = posts.id) AS like_count FROM posts JOIN users ON posts.user_id = users.id WHERE posts.user_id = ? AND posts.deleted = 0 ORDER BY posts.created DESC", (user_id,))
+    cursor.execute("SELECT posts.*, users.username, (SELECT COUNT(*) FROM likes WHERE likes.post_id = posts.id) AS like_count FROM posts JOIN users ON posts.user_id = users.id WHERE posts.deleted = 0 ORDER BY posts.created DESC LIMIT ? OFFSET ?", (limit, offset))
+    results = []
+    for row in cursor.fetchall():
+        results.append(dict(row))
+
+    return results
+
+
+def get_posts_by_id(user_id, limit=10, offset=0):
+    connection = connect_db()
+    cursor = connection.cursor()
+
+    cursor.execute("SELECT posts.*, users.username, (SELECT COUNT(*) FROM likes WHERE post_id = posts.id) AS like_count FROM posts JOIN users ON posts.user_id = users.id WHERE posts.user_id = ? AND posts.deleted = 0 ORDER BY posts.created DESC LIMIT ? OFFSET ?", (user_id, limit, offset))
                    
     results = []
     for row in cursor.fetchall():
@@ -459,7 +483,7 @@ def update_user(user_id, **kwargs):
     connection = connect_db()
     cursor = connection.cursor()
 
-    allowed_fields = ["display_name", "bio", "status", "location", "website", "is_banned", "ban_reason"]
+    allowed_fields = ["display_name", "bio", "status", "location", "website", "profile_ascii", "is_banned", "ban_reason"]
 
     updates = []
     values = []

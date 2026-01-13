@@ -137,11 +137,18 @@ def print_post(data):
     content = data.get("content", "")
     created_at = data.get("created", None)
     likes = data.get("like_count", 0)
+    image_ascii = data.get("image_ascii", None)
 
     print_separator()
     print(f"[{post_id}] @{username} • {format_timestamp(created_at)}")
     print(f"    {content}")
 
+    if image_ascii:
+        print("")
+        for line in image_ascii.split("\n"):
+            print(f"    {line}")
+        print("")
+        
     print(f"    ❤️  {likes} Likes")
 
 
@@ -156,8 +163,14 @@ def print_profile(user):
     followers_count = user.get("followers_count", 0)
     following_count = user.get("following_count", 0)
     posts_count = user.get("posts_count", 0)
+    profile_ascii = user.get("profile_ascii", None)
 
     print_separator()
+
+    if profile_ascii:
+        for line in profile_ascii.split("\n"):
+            print(f"    {line}")
+        print()
 
     if display_name:
         print(f"@{username} ({display_name})")

@@ -1,21 +1,36 @@
 import db
 import auth
+import ascii
 from utils import print_post, print_separator
 
 
-def create_post(content):
+def create_post(content, image_path=None, image_url=None):
     if not auth.is_logged():
         return False, "You must be logged in."
-    
-    if not content:
-        return False, "Post content cannot be empty."
     
     if len(content) > 500:
         return False, "Post content cannot exceed 500 characters."
     
+    image_ascii = None
+    if image_path is not None:
+        success, result = ascii.image_to_ascii(image_path)
+
+        if not success:
+            return False, result
+        
+        image_ascii = result
+
+    elif image_url is not None:
+        success, result = ascii.image_url_to_ascii(image_url)
+
+        if not success:
+            return False, result
+        
+        image_ascii = result
+    
     user = auth.get_current_user()
 
-    success, result = db.create_post(user["id"], content)
+    success, result = db.create_post(user["id"], content, image_ascii)
 
     if success:
         return True, f"Post created! ID: {result}"
@@ -50,19 +65,46 @@ def get_home_feed():
         return False, "You must be logged in."
     
     user = auth.get_current_user()
+
+    offset = 0
     
-    posts = db.get_feed_posts(user["id"])
+    posts = db.get_feed_posts(user["id"], limit=10, offset=offset)
 
     return posts
 
 
-def get_my_posts():
+def get_feed(page=1):
+    if not auth.is_logged():
+        return False, "You must be logged in."
+    
+    user = auth.get_current_user()
+    
+    offset = (page - 1) * 10
+
+    posts = db.get_feed_posts(user["id"], limit=10, offset=offset)
+
+    return posts
+
+
+def get_global_feed(page=1):
+    offset = (page - 1) * 10
+
+    posts = db.get_global_feed_posts(limit=10, offset=offset)
+
+    return posts
+
+
+def get_my_posts(page=1):
     if not auth.is_logged():
         return []
     
     user = auth.get_current_user()
+
+    offset = (page - 1) * 10
     
-    return db.get_posts_by_id(user["id"])
+    posts = db.get_posts_by_id(user["id"], limit=10, offset=offset)
+
+    return posts
 
 
 def view_post(post_id):
@@ -110,7 +152,7 @@ def display_multiple_posts(posts, title):
     return True, None
 
 
-def view_user_posts(username):
+""" def view_user_posts(username):
     user = db.get_user_by_username(username)
 
     if user is None:
@@ -118,7 +160,7 @@ def view_user_posts(username):
     
     posts = db.get_posts_by_id(user["id"])
 
-    return posts
+    return posts """
 
 
 def like_post(post_id):

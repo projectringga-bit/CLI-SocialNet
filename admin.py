@@ -76,10 +76,10 @@ def print_banner_admin():
     print(f"    Follows: {stats.get("follow_count")}")
 
     print("\n Admin commands:")
-    print("    admin                        -> View platform statistics")
-    print("    ban <username> [reason]      -> Ban a user")
-    print("    unban <username>             -> Unban a user")
-    print("    admin_delete <post_id>       -> Delete a post")
+    print("    admin                              -> View platform statistics")
+    print("    admin ban <username> [reason]      -> Ban a user")
+    print("    admin unban <username>             -> Unban a user")
+    print("    admin deletepost <post_id>         -> Delete a post")
 
     print_separator()
     

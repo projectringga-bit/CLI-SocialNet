@@ -1,5 +1,6 @@
 import db
 import auth
+import ascii
 from utils import print_profile
 
 
@@ -95,6 +96,7 @@ def get_profile(username):
         "followers_count": db.get_followers_count(user["id"]),
         "following_count": db.get_following_count(user["id"]),
         "posts_count": db.get_posts_count(user["id"]),
+        "profile_ascii": user["profile_ascii"] or None
     }
 
     if auth.is_logged():
@@ -171,6 +173,41 @@ def update_website(new_website):
     db.update_user(user["id"], website=new_website)
 
     return True, "Website updated."
+
+
+def update_avatar(avatar_path=None, avatar_url=None):
+    if not auth.is_logged():
+        return False, "You must be logged in."
+    
+    if avatar_url is not None:
+        success, result = ascii.image_url_to_ascii(avatar_url)
+        if not success:
+            return False, result
+        
+        avatar_ascii = result
+        user = auth.get_current_user()
+        db.update_user(user["id"], profile_ascii=avatar_ascii)
+
+        return True, "Avatar updated."
+    
+    success, result = ascii.image_to_ascii(avatar_path)
+    if not success:
+        return False, result
+    
+    user = auth.get_current_user()
+    db.update_user(user["id"], profile_ascii=result)
+
+    return True, "Avatar updated."
+
+
+def remove_avatar():
+    if not auth.is_logged():
+        return False, "You must be logged in."
+    
+    user = auth.get_current_user()
+    db.update_user(user["id"], profile_ascii='')
+
+    return True, "Avatar removed."
 
 
 def display_followers(username):
