@@ -134,13 +134,19 @@ def format_timestamp(timestamp):
 def print_post(data):
     post_id = data.get("id", "")
     username = data.get("username", "unknown")
+    display_name = data.get("display_name", "")
     content = data.get("content", "")
     created_at = data.get("created", None)
     likes = data.get("like_count", 0)
     image_ascii = data.get("image_ascii", None)
 
+    if display_name:
+        name = f"{display_name} (@{username})"
+    else:
+        name = f"@{username}"
+
     print_separator()
-    print(f"[{post_id}] @{username} • {format_timestamp(created_at)}")
+    print(f"[{post_id}] {name} • {format_timestamp(created_at)}")
     print(f"    {content}")
 
     if image_ascii:
@@ -193,3 +199,20 @@ def print_profile(user):
     print(f"  Joined: {format_timestamp(created)}")
     
     print_separator()
+
+
+def print_comment(data):
+    comment_id = data.get("id", "")
+    username = data.get("username", "unknown")
+    display_name = data.get("display_name", "")
+    content = data.get("content", "")
+    created = data.get("created", None)
+
+    if display_name:
+        name = f"{display_name} (@{username})"
+    else:
+        name = f"@{username}"
+
+    print(f"  [{comment_id}] {name}")
+    print(f"    {content}")
+    print(f"    • {format_timestamp(created)}")  

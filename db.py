@@ -40,7 +40,8 @@ def init_db():
                     "profile_ascii TEXT DEFAULT ''," \
                     "is_admin INTEGER DEFAULT 0," \
                     "is_banned INTEGER DEFAULT 0," \
-                    "ban_reason TEXT DEFAULT '')")
+                    "ban_reason TEXT DEFAULT '', " \
+                    "is_verified INTEGER DEFAULT 0)")
     
     # sessions
     cursor.execute("CREATE TABLE IF NOT EXISTS sessions (" \
@@ -81,12 +82,35 @@ def init_db():
                    "FOREIGN KEY (followed_id) REFERENCES users(id)," \
                    "UNIQUE(follower_id, followed_id))")
     
+    # Comments table
+    cursor.execute("CREATE TABLE IF NOT EXISTS comments (" \
+                   "id INTEGER PRIMARY KEY AUTOINCREMENT," \
+                   "user_id INTEGER NOT NULL," \
+                   "post_id INTEGER NOT NULL," \
+                   "content TEXT NOT NULL," \
+                   "created INTEGER NOT NULL," \
+                   "deleted INTEGER DEFAULT 0," \
+                   "FOREIGN KEY (user_id) REFERENCES users(id)," \
+                   "FOREIGN KEY (post_id) REFERENCES posts(id))")
+                   
+    # admin logs
+    cursor.execute("CREATE TABLE IF NOT EXISTS admin_logs (" \
+                   "id INTEGER PRIMARY KEY AUTOINCREMENT," \
+                   "admin_id INTEGER NOT NULL," \
+                   "action TEXT NOT NULL," \
+                   "target_user_id INTEGER," \
+                   "details TEXT," \
+                   "created INTEGER NOT NULL," \
+                   "FOREIGN KEY (admin_id) REFERENCES users(id)," \
+                   "FOREIGN KEY (target_user_id) REFERENCES users(id))")
+
 
     connection.commit()
 
     create_admin()
 
     return True
+
 
 def create_user(username, password): #TODO: limit or email verification
     connection = connect_db()
@@ -479,11 +503,62 @@ def is_following(follower_id, followed_id):
     
     return True
 
+def create_comment(user_id, post_id, content):
+    connection = connect_db()
+    cursor = connection.cursor()
+
+    now_timestamp = timestamp()
+
+    try:
+        cursor.execute("INSERT INTO comments (user_id, post_id, content, created) VALUES (?, ?, ?, ?)", (user_id, post_id, content, now_timestamp))
+        connection.commit()
+
+        return True, cursor.lastrowid
+    
+    except Exception as e:
+        return False, f"Error: {e}"
+    
+def get_comments_by_post(post_id, limit):
+    connection = connect_db()
+    cursor = connection.cursor()
+
+    cursor.execute("SELECT comments.*, users.username FROM comments JOIN users ON comments.user_id = users.id WHERE comments.post_id = ? AND comments.deleted = 0 ORDER BY comments.created DESC LIMIT ?", (post_id, limit))
+
+    results = []
+    for row in cursor.fetchall():
+        results.append(dict(row))
+    
+    return results
+
+def get_comment(comment_id):
+    connection = connect_db()
+    cursor = connection.cursor()
+
+    cursor.execute("SELECT comments.*, users.username FROM comments JOIN users ON comments.user_id = users.id WHERE comments.id = ? AND comments.deleted = 0", (comment_id,))
+    row = cursor.fetchone()
+    if row is None:
+        return None
+    
+    return dict(row)
+
+def delete_comment(comment_id):
+    connection = connect_db()
+    cursor = connection.cursor()
+
+    try:
+        cursor.execute("UPDATE comments SET deleted = 1 WHERE id = ?", (comment_id,))
+        connection.commit()
+        return True
+    
+    except Exception as e:
+        print(f"Error: {e}")
+        return False
+
 def update_user(user_id, **kwargs):
     connection = connect_db()
     cursor = connection.cursor()
 
-    allowed_fields = ["display_name", "bio", "status", "location", "website", "profile_ascii", "is_banned", "ban_reason"]
+    allowed_fields = ["display_name", "bio", "status", "location", "website", "profile_ascii", "is_banned", "ban_reason", "is_admin", "is_verified"]
 
     updates = []
     values = []
@@ -515,8 +590,33 @@ def create_admin():
         password_hash, password_salt = hash_password(DEFAULT_ADMIN_PASSWORD)
         now_timestamp = timestamp()
 
-        cursor.execute("INSERT INTO users (username, password_hash, password_salt, created, is_admin, bio) VALUES (?, ?, ?, ?, 1, ?)", ("admin", password_hash, password_salt, now_timestamp, "Admin"))
+        cursor.execute("INSERT INTO users (username, password_hash, password_salt, created, is_admin, bio, is_verified) VALUES (?, ?, ?, ?, 1, ?, ?)", ("admin", password_hash, password_salt, now_timestamp, "Admin", 1))
         connection.commit()
+
+def admin_log(admin_id, action, target_user_id=None, details=None):
+    connection = connect_db()
+    cursor = connection.cursor()
+
+    now_timestamp = timestamp()
+
+    try:
+        cursor.execute("INSERT INTO admin_logs (admin_id, action, target_user_id, details, created) VALUES (?, ?, ?, ?, ?)", (admin_id, action, target_user_id, details, now_timestamp))
+        connection.commit()
+
+    except Exception as e:
+        print(f"Error logging admin action: {e}")
+
+def get_admin_logs(limit, offset):
+    connection = connect_db()
+    cursor = connection.cursor()
+
+    cursor.execute("SELECT admin_logs.*, users.username AS admin_username FROM admin_logs JOIN users ON admin_logs.admin_id = users.id ORDER BY admin_logs.created DESC LIMIT ? OFFSET ?", (limit, offset))
+    
+    results = []
+    for row in cursor.fetchall():
+        results.append(dict(row))
+
+    return results
 
 def get_statistics():
     connection = connect_db()

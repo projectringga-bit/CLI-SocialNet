@@ -209,3 +209,56 @@ def get_likes(post_id):
     likes = db.get_post_likes(post_id)
 
     return likes, None
+
+
+def comment(post_id, content):
+    if not auth.is_logged():
+        return False, "You must be logged in."
+    
+    post = db.get_post(post_id)
+    if post is None:
+        return False, "Post not found."
+    
+    if len(content) > 500:
+        return False, "Comment content cannot exceed 500 characters."
+    
+    user = auth.get_current_user()
+
+    success, result = db.create_comment(user["id"], post_id, content)
+
+    if success:
+        return True, f"Comment added to post #{post_id}."
+    else:
+        return False, result
+    
+
+def delete_comment(comment_id):
+    if not auth.is_logged():
+        return False, "You must be logged in."
+    
+    comment = db.get_comment(comment_id)
+    if comment is None:
+        return False, "Comment not found."
+    
+    user = auth.get_current_user()
+    post = db.get_post(comment["post_id"])
+
+    if comment["user_id"] != user["id"]:
+        return False, "You can only delete your own comments under other users posts."
+
+    if post["user_id"] != user["id"]:
+        return False, "You can only delete comments on your own posts."
+    
+    db.delete_comment(comment_id)
+
+    return True, f"Comment #{comment_id} deleted."
+
+
+def get_post_comments(post_id, limit=50):
+    post = db.get_post(post_id)
+    if post is None:
+        return False, "Post not found."
+    
+    comments = db.get_comments_by_post(post_id, limit=limit)
+
+    return True, comments

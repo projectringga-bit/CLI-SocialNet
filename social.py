@@ -96,7 +96,9 @@ def get_profile(username):
         "followers_count": db.get_followers_count(user["id"]),
         "following_count": db.get_following_count(user["id"]),
         "posts_count": db.get_posts_count(user["id"]),
-        "profile_ascii": user["profile_ascii"] or None
+        "profile_ascii": user["profile_ascii"] or None,
+        "is_admin": user["is_admin"],
+        "is_verified": user["is_verified"] or 0
     }
 
     if auth.is_logged():

@@ -7,7 +7,7 @@ import auth
 import posts
 import social
 import admin
-from utils import print_success, print_error, print_warning, print_info, print_separator, print_banner, print_post
+from utils import print_success, print_error, print_warning, print_info, print_separator, print_banner, print_post, print_comment
 from utils import clear
 
 
@@ -37,6 +37,9 @@ displayname <new_display_name>   -> Change your display name
 like <post_id>                   -> Like a post
 unlike <post_id>                 -> Unlike a post
 likes <post_id>                  -> View likes on a post
+comment <post_id> <comment_text>  -> Comment on a post
+delcomment <comment_id>          -> Delete a comment
+comments <post_id>               -> View comments on a post
 follow <username>                -> Follow a user
 unfollow <username>              -> Unfollow a user
 followers [<username>]           -> View followers of a user (or yourself if no username is provided)
@@ -121,6 +124,10 @@ def execute_command(command, args): # returns True (continue) or False (exit)
             
         postss = posts.get_feed(page=page)
 
+        if not postss:
+            print_info("No posts to show.")
+            return True
+
         posts.display_multiple_posts(postss, f"Your Feed - Page {page}")
 
     
@@ -139,6 +146,10 @@ def execute_command(command, args): # returns True (continue) or False (exit)
                 return True
             
         postss = posts.get_global_feed(page=page)
+
+        if not postss:
+            print_info("No posts to show.")
+            return True
 
         posts.display_multiple_posts(postss, f"Explore - Page {page}")
     
@@ -453,6 +464,70 @@ def execute_command(command, args): # returns True (continue) or False (exit)
 
         else:
             print_info("No likes on this post yet.")
+
+
+    elif command == "comment":
+        if not auth.is_logged():
+            print_warning("You must be logged in to comment on a post.")
+            return True
+        
+        if len(args) < 2:
+            print_error("Usage: comment <post_id> <comment_text>")
+            return True
+        
+        post_id = args[0]
+
+        text = " ".join(args[1:])
+
+        success, message = posts.comment(post_id, text)
+
+        if success:
+            print_success(message)
+        else:
+            print_error(message)
+
+    
+    elif command == "delcomment":
+        if not auth.is_logged():
+            print_warning("You must be logged in to delete a comment.")
+            return True
+        
+        if len(args) != 1:
+            print_error("Usage: delcomment <comment_id>")
+            return True
+        
+        comment_id = args[0]
+
+        success, message = posts.delete_comment(comment_id)
+
+        if success:
+            print_success(message)
+        else:
+            print_error(message)
+
+
+    elif command == "comments":
+        if len(args) != 1:
+            print_error("Usage: comments <post_id>")
+            return True
+        
+        post_id = args[0]
+
+        success, comments = posts.get_post_comments(post_id)
+        if not success:
+            print_error(comments)
+            return True
+        
+        if comments:
+            print(f"\nComments on post #{post_id}:")
+            
+            for comment in comments:
+                print_comment(comment)
+
+            print_separator()
+
+        else:
+            print_info("No comments on this post yet.")
 
 
     elif command == "follow":
@@ -775,6 +850,79 @@ def execute_command(command, args): # returns True (continue) or False (exit)
                 print_success(message)
             else:
                 print_error(message)
+        
+        elif subcommand == "makeadmin":
+            if len(args) != 1:
+                print_error("Usage: admin makeadmin <username>")
+                return True
+            
+            username = args[0].lstrip('@')
+
+            success, message = admin.make_admin(username)
+
+            if success:
+                print_success(message)
+            else:
+                print_error(message)
+
+        elif subcommand == "removeadmin":
+            if len(args) != 1:
+                print_error("Usage: admin removeadmin <username>")
+                return True
+            
+            username = args[0].lstrip('@')
+
+            success, message = admin.remove_admin(username)
+
+            if success:
+                print_success(message)
+            else:
+                print_error(message)
+
+        elif subcommand == "verify":
+            if len(args) != 1:
+                print_error("Usage: admin verify <username>")
+                return True
+            
+            username = args[0].lstrip('@')
+
+            success, message = admin.verify_user(username)
+
+            if success:
+                print_success(message)
+            else:
+                print_error(message)
+
+        elif subcommand == "unverify":
+            if len(args) != 1:
+                print_error("Usage: admin unverify <username>")
+                return True
+            
+            username = args[0].lstrip('@')
+
+            success, message = admin.unverify_user(username)
+
+            if success:
+                print_success(message)
+            else:
+                print_error(message)
+
+        elif subcommand == "logs":
+            page = 1
+
+            if len(args) > 1:
+                print_error("Usage: admin logs [<page>]")
+                return True
+            
+            if len(args) == 1:
+                try:
+                    page = int(args[0])
+
+                except ValueError:
+                    print_error("Page must be a number.")
+                    return True
+                
+            admin.print_admin_logs(page=page)
 
         else:
             print_error(f"Unknown admin command: {subcommand}")
