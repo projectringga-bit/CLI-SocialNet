@@ -170,6 +170,9 @@ def print_profile(user):
     following_count = user.get("following_count", 0)
     posts_count = user.get("posts_count", 0)
     profile_ascii = user.get("profile_ascii", None)
+    is_admin = user.get("is_admin", 0)
+    is_verified = user.get("is_verified", 0)
+    is_private = user.get("is_private", 0)
 
     print_separator()
 
@@ -183,6 +186,15 @@ def print_profile(user):
 
     else:
         print(f"@{username}")
+
+    if is_admin:
+        print("  🛡️  Admin")
+    
+    if is_verified:
+        print("   ✓  Verified")
+
+    if is_private:
+        print("  🔒  Private Account")
 
     if status:
         print(f"  💭 Status: {status}")

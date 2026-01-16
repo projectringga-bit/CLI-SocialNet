@@ -37,7 +37,7 @@ displayname <new_display_name>   -> Change your display name
 like <post_id>                   -> Like a post
 unlike <post_id>                 -> Unlike a post
 likes <post_id>                  -> View likes on a post
-comment <post_id> <comment_text>  -> Comment on a post
+comment <post_id> <comment_text> -> Comment on a post
 delcomment <comment_id>          -> Delete a comment
 comments <post_id>               -> View comments on a post
 follow <username>                -> Follow a user
@@ -48,10 +48,14 @@ bio <new_bio>                    -> Change your bio
 status <new_status>              -> Change your status
 location <new_location>          -> Change your location
 website <new_website>            -> Change your website
+private                          -> Toggle your account's private status
 avatar <image_path>              -> Change your avatar using a local image path
 avatarurl <image_url>            -> Change your avatar using an image URL
 removeavatar                     -> Remove your avatar
 profile [<username>]             -> View a user's profile (or your own if no username is provided)
+dm <username> <message>          -> Send a direct message to a user
+inbox                            -> View your inbox
+messages <username>             -> View messages with a specific user
 """)
     
 
@@ -60,6 +64,9 @@ def show_status():
         user = auth.get_current_user()
         
         display_name = user.get("display_name")
+
+        if auth.is_admin():
+            print_info("Logged in as Admin.")
 
         if display_name:
             print_info(f"Logged in as: {display_name} (@{user['username']})")
@@ -791,6 +798,57 @@ def execute_command(command, args): # returns True (continue) or False (exit)
             print_success(message)
         else:
             print_error(message)
+
+
+    elif command == "private": # TODO: private account effect on posts visibility
+        if not auth.is_logged():
+            print_warning("You must be logged in to change your privacy settings.")
+            return True
+        
+        if len(args) != 0:
+            print_error("Usage: private")
+            return True
+        
+        success, message = social.change_private_status()
+
+        if success:
+            print_success(message)
+        else:
+            print_error(message)
+
+
+    elif command == "dm":
+        if len(args) < 2:
+            print_error("Usage: dm <username> <message>")
+            return True
+        
+        username = args[0].lstrip('@')
+        message = " ".join(args[1:])
+
+        success, response = social.send_message(username, message)
+
+        if success:
+            print_success(response)
+        else:
+            print_error(response)
+
+
+    elif command == "inbox":
+        if len(args) != 0:
+            print_error("Usage: inbox")
+            return True
+        
+        social.display_conversations()
+
+    
+    elif command == "messages":
+        if len(args) != 1:
+            print_error("Usage: messages <username>")
+            return True
+        
+        username = args[0].lstrip('@')
+
+        social.display_messages(username)
 
 
     # Admin commands

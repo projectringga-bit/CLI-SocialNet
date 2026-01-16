@@ -1,7 +1,8 @@
 import db
 import auth
 import ascii
-from utils import print_profile
+from utils import print_profile, print_separator, print_error, print_info
+from utils import format_timestamp
 
 
 def follow(username):
@@ -98,7 +99,8 @@ def get_profile(username):
         "posts_count": db.get_posts_count(user["id"]),
         "profile_ascii": user["profile_ascii"] or None,
         "is_admin": user["is_admin"],
-        "is_verified": user["is_verified"] or 0
+        "is_verified": user["is_verified"] or 0,
+        "is_private": user["is_private"] or 0
     }
 
     if auth.is_logged():
@@ -212,6 +214,23 @@ def remove_avatar():
     return True, "Avatar removed."
 
 
+def change_private_status():
+    if not auth.is_logged():
+        return False, "You must be logged in."
+    
+    user = auth.get_current_user()
+
+    if user["is_private"] == 0:
+        db.update_user(user["id"], is_private=1)
+
+        return True, "Your account is now private."
+    
+    elif user["is_private"] == 1:
+        db.update_user(user["id"], is_private=0)
+
+        return True, "Your account is now public."
+
+
 def display_followers(username):
     success, followers = get_followers(username)
 
@@ -279,3 +298,103 @@ def display_profile(username):
         follow_status = None
 
     return True, follow_status
+
+
+def get_conversations():
+    if not auth.is_logged():
+        return False, "You must be logged in."
+    
+    current_user = auth.get_current_user()
+    conversations = db.get_conversations(current_user["id"])
+
+    return True, conversations
+
+
+def send_message(username, content):
+    if not auth.is_logged():
+        return False, "You must be logged in."
+    
+    current_user = auth.get_current_user()
+    target = db.get_user_by_username(username)
+
+    if target is None:
+        return False, "User not found."
+    
+    if target["is_banned"] == 1:
+        return False, "Cannot send message to this user."
+    
+    content = content.strip()
+    if not content:
+        return False, "Message content cannot be empty."
+    
+    if len(content) > 1000:
+        return False, "Message content cannot exceed 1000 characters."
+    
+    if current_user["id"] == target["id"]:
+        return False, "You cannot send a message to yourself."
+    
+    db.send_message(current_user["id"], target["id"], content)
+
+    return True, f"Message sent to @{username}."
+
+
+def get_messages(username):
+    if not auth.is_logged():
+        return False, "You must be logged in."
+    
+    current_user = auth.get_current_user()
+    target = db.get_user_by_username(username)
+
+    if target is None:
+        return False, "User not found."
+    
+    messages = db.get_messages(current_user["id"], target["id"])
+
+    return True, messages
+
+def display_conversations():
+    success, conversations = get_conversations()
+
+    if not success:
+        print_error(conversations)
+        return
+    
+    if not conversations:
+        print_info("You have no conversations.")
+        return
+
+    print("Your Conversations:")
+
+    for conversation in conversations:
+        username = conversation["username"]
+        last_message = conversation["last_message"]
+        timestamp = conversation["timestamp"]
+        print(f"@{username} - Last message {format_timestamp(timestamp)}: {last_message}")
+
+    print_separator()
+
+
+def display_messages(username):
+    success, messages = get_messages(username)
+
+    if not success:
+        print_error(messages)
+        return
+    
+    if not messages:
+        print_info(f"No messages with @{username}.")
+        return
+    
+    current_user = auth.get_current_user()
+
+    for message in messages:
+        if message["sender_id"] == current_user["id"]:
+            sender = "You"
+        
+        else:
+            sender = f"@{username}"
+        
+        time = format_timestamp(message["created"])
+        print(f" [{time}] {sender}: {message['content']}")
+
+    print_separator()

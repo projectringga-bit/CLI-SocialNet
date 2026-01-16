@@ -1,7 +1,7 @@
 import db
 import auth
 import ascii
-from utils import print_post, print_separator
+from utils import print_post, print_separator, print_comment
 
 
 def create_post(content, image_path=None, image_url=None):
@@ -132,6 +132,14 @@ def display_single_post(post_id):
             usernames.append(f"and {len(likes) - 5} more")
         
         print(f"    Liked by: {', '.join(usernames)}")
+        
+    comment_count = db.get_comments_count(post_id)
+    comments = db.get_comments_by_post(post_id, limit=3)
+    if comment_count > 0:
+        print(f"\n    Comments: {comment_count}")
+
+        for comment in comments:
+            print_comment(comment)
     
     print_separator()
 

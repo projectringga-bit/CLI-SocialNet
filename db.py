@@ -41,6 +41,7 @@ def init_db():
                     "is_admin INTEGER DEFAULT 0," \
                     "is_banned INTEGER DEFAULT 0," \
                     "ban_reason TEXT DEFAULT '', " \
+                    "is_private INTEGER DEFAULT 0," \
                     "is_verified INTEGER DEFAULT 0)")
     
     # sessions
@@ -92,6 +93,16 @@ def init_db():
                    "deleted INTEGER DEFAULT 0," \
                    "FOREIGN KEY (user_id) REFERENCES users(id)," \
                    "FOREIGN KEY (post_id) REFERENCES posts(id))")
+    
+    # Messages table
+    cursor.execute("CREATE TABLE IF NOT EXISTS messages (" \
+                   "id INTEGER PRIMARY KEY AUTOINCREMENT," \
+                   "sender_id INTEGER NOT NULL," \
+                   "receiver_id INTEGER NOT NULL," \
+                   "content TEXT NOT NULL," \
+                   "created INTEGER NOT NULL," \
+                   "FOREIGN KEY (sender_id) REFERENCES users(id)," \
+                   "FOREIGN KEY (receiver_id) REFERENCES users(id))")
                    
     # admin logs
     cursor.execute("CREATE TABLE IF NOT EXISTS admin_logs (" \
@@ -530,6 +541,19 @@ def get_comments_by_post(post_id, limit):
     
     return results
 
+def get_comments_count(post_id):
+    connection = connect_db()
+    cursor = connection.cursor()
+
+    cursor.execute("SELECT COUNT(*) AS count FROM comments WHERE post_id = ? AND deleted = 0", (post_id,))
+    row = cursor.fetchone()
+    if row is None:
+        return 0
+    
+    count = row["count"]
+
+    return count
+
 def get_comment(comment_id):
     connection = connect_db()
     cursor = connection.cursor()
@@ -553,12 +577,60 @@ def delete_comment(comment_id):
     except Exception as e:
         print(f"Error: {e}")
         return False
+    
+def send_message(sender_id, receiver_id, content):
+    connection = connect_db()
+    cursor = connection.cursor()
+
+    now_timestamp = timestamp()
+
+    try:
+        cursor.execute("INSERT INTO messages (sender_id, receiver_id, content, created) VALUES (?, ?, ?, ?)", (sender_id, receiver_id, content, now_timestamp))
+        connection.commit()
+        return True, cursor.lastrowid
+    
+    except Exception as e:
+        print(f"Error: {e}")
+        return False, f"Error: {e}"
+
+def get_messages(user_id, other_id, limit=20):
+    connection = connect_db()
+    cursor = connection.cursor()
+
+    cursor.execute("SELECT messages.*, sender.username AS sender_username, receiver.username AS receiver_username FROM messages JOIN users AS sender ON messages.sender_id = sender.id JOIN users AS receiver ON messages.receiver_id = receiver.id WHERE (messages.sender_id = ? AND messages.receiver_id = ?) OR (messages.sender_id = ? AND messages.receiver_id = ?) ORDER BY messages.created ASC LIMIT ?", (user_id, other_id, other_id, user_id, limit))
+
+    results = []
+    for row in cursor.fetchall():
+        results.append(dict(row))
+    
+    return results
+
+def get_conversations(user_id):
+    connection = connect_db()
+    cursor = connection.cursor()
+
+    cursor.execute("SELECT CASE WHEN sender_id = ? THEN receiver_id ELSE sender_id END AS other_id, content AS last_message, MAX(created) AS timestamp FROM messages WHERE sender_id = ? OR receiver_id = ? GROUP BY other_id ORDER BY timestamp DESC", (user_id, user_id, user_id))
+
+    results = []
+
+    for row in cursor.fetchall():
+        user = get_user_by_id(row["other_id"])
+
+        if user:
+            results.append({
+                "id": user["id"],
+                "username": user["username"],
+                "last_message": row["last_message"],
+                "timestamp": row["timestamp"]
+            })
+
+    return results
 
 def update_user(user_id, **kwargs):
     connection = connect_db()
     cursor = connection.cursor()
 
-    allowed_fields = ["display_name", "bio", "status", "location", "website", "profile_ascii", "is_banned", "ban_reason", "is_admin", "is_verified"]
+    allowed_fields = ["display_name", "bio", "status", "location", "website", "profile_ascii", "is_banned", "ban_reason", "is_admin", "is_verified", "is_private"]
 
     updates = []
     values = []
