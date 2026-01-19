@@ -288,7 +288,7 @@ def get_post(post_id):
     connection = connect_db()
     cursor = connection.cursor()
 
-    cursor.execute("SELECT posts.*, users.username, (SELECT COUNT(*) FROM likes WHERE likes.post_id = posts.id) AS like_count FROM posts JOIN users ON posts.user_id = users.id WHERE posts.id = ? AND posts.deleted = 0", (post_id,))
+    cursor.execute("SELECT posts.*, users.username, (SELECT COUNT(*) FROM likes WHERE likes.post_id = posts.id) AS like_count, (SELECT COUNT(*) FROM comments WHERE comments.post_id = posts.id) AS comment_count FROM posts JOIN users ON posts.user_id = users.id WHERE posts.id = ? AND posts.deleted = 0", (post_id,))
     row = cursor.fetchone()
     if row is None:
         return None
@@ -312,7 +312,7 @@ def get_feed_posts(user_id, limit=10, offset=0):
     connection = connect_db()
     cursor = connection.cursor()
 
-    cursor.execute("SELECT posts.*, users.username, (SELECT COUNT(*) FROM likes WHERE likes.post_id = posts.id) AS like_count FROM posts JOIN users ON posts.user_id = users.id WHERE posts.deleted = 0 AND (posts.user_id = ? OR posts.user_id IN (SELECT followed_id FROM follows WHERE follower_id = ?)) ORDER BY posts.created DESC LIMIT ? OFFSET ?", (user_id, user_id, limit, offset))
+    cursor.execute("SELECT posts.*, users.username, (SELECT COUNT(*) FROM likes WHERE likes.post_id = posts.id) AS like_count, (SELECT COUNT(*) FROM comments WHERE comments.post_id = posts.id) AS comment_count FROM posts JOIN users ON posts.user_id = users.id WHERE posts.deleted = 0 AND (posts.user_id = ? OR posts.user_id IN (SELECT followed_id FROM follows WHERE follower_id = ?)) ORDER BY posts.created DESC LIMIT ? OFFSET ?", (user_id, user_id, limit, offset))
     results = []
     for row in cursor.fetchall():
         results.append(dict(row))
@@ -324,7 +324,7 @@ def get_global_feed_posts(limit=10, offset=0):
     connection = connect_db()
     cursor = connection.cursor()
 
-    cursor.execute("SELECT posts.*, users.username, (SELECT COUNT(*) FROM likes WHERE likes.post_id = posts.id) AS like_count FROM posts JOIN users ON posts.user_id = users.id WHERE posts.deleted = 0 ORDER BY posts.created DESC LIMIT ? OFFSET ?", (limit, offset))
+    cursor.execute("SELECT posts.*, users.username, (SELECT COUNT(*) FROM likes WHERE likes.post_id = posts.id) AS like_count, (SELECT COUNT(*) FROM comments WHERE comments.post_id = posts.id) AS comment_count FROM posts JOIN users ON posts.user_id = users.id WHERE posts.deleted = 0 ORDER BY posts.created DESC LIMIT ? OFFSET ?", (limit, offset))
     results = []
     for row in cursor.fetchall():
         results.append(dict(row))
@@ -336,7 +336,7 @@ def get_posts_by_id(user_id, limit=10, offset=0):
     connection = connect_db()
     cursor = connection.cursor()
 
-    cursor.execute("SELECT posts.*, users.username, (SELECT COUNT(*) FROM likes WHERE post_id = posts.id) AS like_count FROM posts JOIN users ON posts.user_id = users.id WHERE posts.user_id = ? AND posts.deleted = 0 ORDER BY posts.created DESC LIMIT ? OFFSET ?", (user_id, limit, offset))
+    cursor.execute("SELECT posts.*, users.username, (SELECT COUNT(*) FROM likes WHERE likes.post_id = posts.id) AS like_count, (SELECT COUNT(*) FROM comments WHERE comments.post_id = posts.id) AS comment_count FROM posts JOIN users ON posts.user_id = users.id WHERE posts.user_id = ? AND posts.deleted = 0 ORDER BY posts.created DESC LIMIT ? OFFSET ?", (user_id, limit, offset))
                    
     results = []
     for row in cursor.fetchall():

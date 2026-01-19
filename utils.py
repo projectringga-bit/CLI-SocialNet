@@ -5,6 +5,7 @@ import os
 import sys
 import time
 import datetime
+import unicodedata
 
 
 def hash_password(password, salt=None):
@@ -69,7 +70,7 @@ def print_info(message):
     print(f"\033[94m i {message}\033[0m")  # blue
 
 def print_separator():
-    print("\033[90m" + "-" * 40 + "\033[0m")  # gray
+    print("\033[90m" + "-" * 82 + "\033[0m")  # gray
 
 
 def print_banner():
@@ -129,6 +130,43 @@ def format_timestamp(timestamp):
     
     else:
         return date_time.strftime("%Y-%m-%d")
+    
+
+def visible_width(text):
+    width = 0
+
+    for char in text:
+        if unicodedata.east_asian_width(char) in ('F', 'W'):
+            width += 2
+        else:
+            width += 1
+
+    return width
+
+def pad_line(text, width):
+    visible_length = visible_width(text)
+
+    padding = width - visible_length
+
+    if padding < 0:
+        result = ""
+        current_length = 0
+
+        for char in text:
+            if unicodedata.east_asian_width(char) in ('F', 'W'):
+                char_length = 2
+            else:
+                char_length = 1
+
+            if current_length + char_length > width:
+                break
+
+            result += char
+            current_length += char_length
+            
+        return result
+
+    return text + " " * padding
 
 
 def print_post(data):
@@ -137,28 +175,177 @@ def print_post(data):
     display_name = data.get("display_name", "")
     content = data.get("content", "")
     created_at = data.get("created", None)
-    likes = data.get("like_count", 0)
+    likes_count = data.get("like_count", 0)
+    comments_count = data.get("comment_count", 0)
     image_ascii = data.get("image_ascii", None)
 
+    WIDTH = 80
+    
+    def wrap_text(text, content_with_lines):
+        lines = []
+
+        for texts in text.split("\n"):
+            current_line = ""
+            current_width = 0
+
+            for word in texts.split(" "):
+                word_width = visible_width(word)
+
+                if current_width == 0:
+                    if word_width > content_with_lines:
+                        while visible_width(word) > content_with_lines:
+                            part = ""
+                            part_width = 0
+
+                            for char in word:
+                                if unicodedata.east_asian_width(char) in ('F', 'W'):
+                                    char_length = 2
+                                else:
+                                    char_length = 1
+
+                                if (part_width + char_length) > content_with_lines:
+                                    break
+
+                                part += char
+                                part_width += char_length
+
+                            lines.append(part)
+                            word = word[len(part):]
+
+                        if word:
+                            current_line = word
+                            current_width = visible_width(current_line)
+                    
+                    else:
+                        current_line = word
+                        current_width = word_width
+                
+                elif (current_width + word_width + 1) <= content_with_lines:
+                    current_line += " " + word
+                    current_width += word_width + 1
+
+                else:
+                    lines.append(current_line)
+
+                    if word_width > content_with_lines:
+                        while visible_width(word) > content_with_lines:
+                            part = ""
+                            part_width = 0
+
+                            for char in word:
+                                if unicodedata.east_asian_width(char) in ('F', 'W'):
+                                    char_length = 2
+                                else:
+                                    char_length = 1
+
+                                if (part_width + char_length) > content_with_lines:
+                                    break
+
+                                part += char
+                                part_width += char_length
+
+                            lines.append(part)
+                            word = word[len(part):]
+
+                        if word:
+                            current_line = word
+                            current_width = visible_width(current_line)
+
+                        else:
+                            current_line = ""
+                            current_width = 0
+
+                    else:
+                        current_line = word
+                        current_width = word_width
+            
+            if current_line:
+                lines.append(current_line)
+            
+            elif not lines:
+                lines.append("")
+        
+        return lines
+    
+    print("╭" + "─" * WIDTH + "╮")
+    
     if display_name:
         name = f"{display_name} (@{username})"
     else:
         name = f"@{username}"
 
-    print_separator()
-    print(f"[{post_id}] {name} • {format_timestamp(created_at)}")
-    print(f"    {content}")
+    time_string = format_timestamp(created_at)
+    header = f"[#{post_id}] {name}"
+
+    header_visible_line = visible_width(header)
+    timestamp_visible_line = visible_width(time_string)
+    available_space_for_time = WIDTH - header_visible_line - timestamp_visible_line - 1
+
+    if available_space_for_time >= 0:
+        header_line = header + " " * (available_space_for_time + 1) + time_string + " "
+    
+    else:
+        max_header_length = WIDTH - timestamp_visible_line - 3
+        truncated_header = ""
+        truncated_width = 0
+
+        for char in header:
+            if unicodedata.east_asian_width(char) in ('F', 'W'):
+                char_length = 2
+            else:
+                char_length = 1
+
+            if truncated_width + char_length > max_header_length:
+                break
+
+            truncated_header += char
+            truncated_width += char_length
+        
+        header_line = truncated_header + "..." + " " + time_string + " "
+
+    print("│" + pad_line(header_line, WIDTH) + "│")    
+    print("│" + " " * WIDTH + "│")
+
+    content_with_lines = WIDTH - 4
+    wrapped_content = wrap_text(content, content_with_lines)
+
+    for line in wrapped_content:
+        padded_line = line + " " * (content_with_lines - visible_width(line))
+        print("│  " + padded_line + "  │")
 
     if image_ascii:
-        print("")
+        print("│" + " " * WIDTH + "│")
+
         for line in image_ascii.split("\n"):
-            print(f"    {line}")
-        print("")
-        
-    print(f"    ❤️  {likes} Likes")
+            if visible_width(line) > WIDTH:
+                truncated_line = ""
+                current_width = 0
+
+                for char in line:
+                    if unicodedata.east_asian_width(char) in ('F', 'W'):
+                        char_length = 2
+                    else:
+                        char_length = 1
+
+                    if current_width + char_length > WIDTH:
+                        break
+
+                    truncated_line += char
+                    current_width += char_length
+                
+                print("│" + pad_line(truncated_line, WIDTH) + "│")
+            else:
+                print("│" + pad_line(line, WIDTH) + "│")
+
+    print("│" + " " * WIDTH + "│")
+
+    statistics_line = f"  ❤️ {likes_count}   💬 {comments_count}  "
+    print("│" + pad_line(statistics_line, WIDTH) + "│")
+
+    print("╰" + "─" * WIDTH + "╯")
 
 
-def print_profile(user):
+def print_profile(user, posts=None):
     username = user.get("username", "unknown")
     display_name = user.get("display_name", "")
     bio = user.get("bio", "No bio")
@@ -174,43 +361,144 @@ def print_profile(user):
     is_verified = user.get("is_verified", 0)
     is_private = user.get("is_private", 0)
 
-    print_separator()
+    WIDTH = 80
+    
+    icons = []
+    
+    if is_admin:
+        icons.append("🛡️ Admin")
+    if is_verified:
+        icons.append("✓ Verified")
+    if is_private:
+        icons.append("🔒 Private")
+
+    icons_line = ""
+    
+    if icons:
+        icons_line = f" [{' • '.join(icons)}] "
+
+    print("╭" + "─" * WIDTH + "╮")
+
+    title_pad = (WIDTH - 9) // 2
+    print("│" + " " * title_pad + " Profile " + " " * (WIDTH - title_pad - 9) + "│")
+    
+    print("├" + "─" * WIDTH + "┤")
 
     if profile_ascii:
+        print("│" + " " * WIDTH + "│")
+
         for line in profile_ascii.split("\n"):
-            print(f"    {line}")
-        print()
+
+            if len(line) > WIDTH - 4:
+                line = line[:WIDTH - 4]
+            
+            line_padded = (WIDTH - len(line)) // 2
+            print("│" + " " * line_padded + line + " " * (WIDTH - line_padded - len(line)) + "│")
+
+        print("├" + "─" * WIDTH + "┤")
+
+    print("│" + " " * WIDTH + "│")
 
     if display_name:
-        print(f"@{username} ({display_name})")
-
+        name_l = f"{display_name} (@{username})"
+    
     else:
-        print(f"@{username}")
+        name_l = f"@{username}"
 
-    if is_admin:
-        print("  🛡️  Admin")
+    print("│" + pad_line(f"  {name_l}{icons_line}", WIDTH) + "│")
     
-    if is_verified:
-        print("   ✓  Verified")
-
-    if is_private:
-        print("  🔒  Private Account")
-
     if status:
-        print(f"  💭 Status: {status}")
+        print(f"│" + " " * WIDTH + "│")
+
+        status_l = f"   Status: {status} "
+        if len(status_l) > WIDTH -2:
+            status_l = status_l[:WIDTH - 5] + "..."
+        
+        print(f"│" + pad_line(status_l, WIDTH) + "│")
+
+    print("│" + " " * WIDTH + "│")
+    print("├" + "─" * WIDTH + "┤")
+
+    print("│" + pad_line(f"  BIO", WIDTH) + "│")
+    print("│" + " " * WIDTH + "│")
+
+    bio_with_lines = WIDTH - 6
+    words = bio.split("\n")
+    lines = []
+    current_line = ""
+    for word in words:
+        if len(word) > bio_with_lines:
+            while len(word) > bio_with_lines:
+                part = word[:bio_with_lines]
+                lines.append(part)
+                word = word[bio_with_lines:]
+
+            if word:
+                current_line = word
+                
+        else:
+            current_line = word
+
+        if current_line:
+            lines.append(current_line)
+            current_line = ""
+
+    for line in lines[:4]:
+        print("│" + pad_line(f"   {line}", WIDTH) + "│")
     
-    print(f"  📝 Bio: {bio}")
+    print("│" + " " * WIDTH + "│")
 
-    if location:
-        print(f"  📍 Location: {location}")
+    if location or website:
+        print("├" + "─" * WIDTH + "┤")
+        print("│" + pad_line(f"  INFO", WIDTH) + "│")
+        print("│" + " " * WIDTH + "│")
 
-    if website:
-        print(f"  🔗 Website: {website}")
+        if location:
+            location_l = f"   📍 Location: {location}"
+            if len(location_l) > WIDTH - 2:
+                location_l = location_l[:WIDTH - 5] + "..."
+            
+            print("│" + pad_line(location_l, WIDTH) + "│")
+        
+        if website:
+            website_l = f"   🔗 Website: {website}"
+            if len(website_l) > WIDTH - 2:
+                website_l = website_l[:WIDTH - 5] + "..."
+            
+            print("│" + pad_line(website_l, WIDTH) + "│")
 
-    print(f"\n  {posts_count} Posts • {followers_count} Followers • {following_count} Following")
-    print(f"  Joined: {format_timestamp(created)}")
+        print("│" + " " * WIDTH + "│")
     
-    print_separator()
+    print("├" + "─" * WIDTH + "┤")
+    print("│" + pad_line(f"  STATISTICS", WIDTH) + "│")
+    print("│" + " " * WIDTH + "│")
+
+    stats_l1 = f"  Posts: {posts_count}   Followers: {followers_count}   Following: {following_count}  "
+    stats_l2 = f"  Joined: {format_timestamp(created)}  "
+
+    print("│" + pad_line(stats_l1, WIDTH) + "│")
+    print("│" + pad_line(stats_l2, WIDTH) + "│")
+    print("│" + " " * WIDTH + "│")
+
+    print("╰" + "─" * WIDTH + "╯")
+
+    if user.get("is_following") and user.get("is_follows_you"):
+        print("  [✔] You and this user follow each other")
+        
+    if user.get("is_following"):
+        print("  [✔] You are following this user")
+    
+    if user.get("is_follows_you"):
+        print("  [✔] This user is following you")
+    
+    if posts:
+        print()
+        print("╭" + "─" * WIDTH + "╮")
+        print("│" + " " * ((WIDTH - 14) // 2) + " RECENT POSTS " + " " * (WIDTH - ((WIDTH - 14) // 2) - 14) + "│")
+        print("╰" + "─" * WIDTH + "╯")
+
+        for post in posts:
+            print_post(post)
 
 
 def print_comment(data):
@@ -220,11 +508,95 @@ def print_comment(data):
     content = data.get("content", "")
     created = data.get("created", None)
 
+    WIDTH = 60
+
+    def wrap_text(text, content_with_lines):
+        lines = []
+
+        for texts in text.split("\n"):
+            current_line = ""
+            current_width = 0
+
+            for word in texts.split(" "):
+                word_width = len(word)
+
+                if current_width == 0:
+                    if word_width > content_with_lines:
+                        while len(word) > content_with_lines:
+                            part = word[:content_with_lines]
+                            lines.append(part)
+                            word = word[content_with_lines:]
+
+                        if word:
+                            current_line = word
+                            current_width = len(current_line)
+
+                    else:
+                        current_line = word
+                        current_width = word_width
+
+                elif (current_width + word_width + 1) <= content_with_lines:
+                    current_line += " " + word
+                    current_width += word_width + 1
+
+                else:
+                    lines.append(current_line)
+
+                    if word_width > content_with_lines:
+                        while len(word) > content_with_lines:
+                            part = word[:content_with_lines]
+                            lines.append(part)
+                            word = word[content_with_lines:]
+
+                        if word:
+                            current_line = word
+                            current_width = len(current_line)
+
+                        else:
+                            current_line = ""
+                            current_width = 0
+
+                    else:
+                        current_line = word
+                        current_width = word_width
+
+            if current_line:
+                lines.append(current_line)
+
+            elif not lines:
+                lines.append("")
+            
+        return lines
+    
+
+    print("  ┌" + "─" * WIDTH + "┐")
+
     if display_name:
         name = f"{display_name} (@{username})"
     else:
         name = f"@{username}"
 
-    print(f"  [{comment_id}] {name}")
-    print(f"    {content}")
-    print(f"    • {format_timestamp(created)}")  
+    time_len = len(format_timestamp(created))
+    header = f"[#{comment_id}] {name}"
+    header_len = len(header)
+
+    if header_len + time_len + 2 <= WIDTH:
+        space = WIDTH - header_len - time_len - 1
+        header_line = header + " " * space + format_timestamp(created) + " "
+
+    else:
+        header_line = header[:WIDTH - time_len - 3] + "... " + format_timestamp(created) + " "
+
+    print("  │" + pad_line(header_line, WIDTH) + "│")
+    print("  │" + " " * WIDTH + "│")
+
+    content_with_lines = WIDTH - 4
+    wrapped_content = wrap_text(content, content_with_lines)
+
+    for line in wrapped_content:
+        padded_line = line + " " * (content_with_lines - len(line))
+        print("  │  " + padded_line + "  │")
+
+    print("  │" + " " * WIDTH + "│")
+
+    print("  └" + "─" * WIDTH + "┘")

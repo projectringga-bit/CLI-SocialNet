@@ -283,21 +283,11 @@ def display_profile(username):
     if profile is None:
         return False, "User not found."
     
-    print_profile(profile)
-
-    if profile.get("is_following") and profile.get("follows_you"):
-        follow_status = "You and this user follow each other."
+    posts = db.get_posts_by_id(profile["id"], limit=15)
     
-    elif profile.get("is_following"):
-        follow_status = "You are following this user."
+    print_profile(profile, posts=posts)
 
-    elif profile.get("follows_you"):
-        follow_status = "This user follows you."
-
-    else:
-        follow_status = None
-
-    return True, follow_status
+    return True, None
 
 
 def get_conversations():
