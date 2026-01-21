@@ -2,7 +2,7 @@ import db
 import auth
 import ascii
 from utils import print_profile, print_separator, print_error, print_info
-from utils import format_timestamp
+from utils import format_timestamp, wrap_text, pad_line
 
 
 def follow(username):
@@ -338,6 +338,8 @@ def get_messages(username):
     if target is None:
         return False, "User not found."
     
+    db.mark_messages(current_user["id"], target["id"])
+    
     messages = db.get_messages(current_user["id"], target["id"])
 
     return True, messages
@@ -352,15 +354,40 @@ def display_conversations():
     if not conversations:
         print_info("You have no conversations.")
         return
+    
+    WIDTH = 80
 
-    print("Your Conversations:")
+    def pad_line(text, width):
+        padding = width - len(text)
+        if padding < 0:
+            return text[:width - 3] + "..."
+        
+        return text + " " * padding
+
+    print()
+    print("╭" + "─" * WIDTH + "╮")
+    title_pad = (WIDTH - len(" INBOX ")) // 2
+    print("│" + " " * title_pad + " INBOX " + " " * (WIDTH - title_pad - len(" INBOX ")) + "│")
+    print("├" + "─" * WIDTH + "┤")
 
     for conversation in conversations:
-        username = conversation["username"]
+        username = f"@{conversation['username']}"
         last_message = conversation["last_message"]
-        timestamp = conversation["timestamp"]
-        print(f"@{username} - Last message {format_timestamp(timestamp)}: {last_message}")
+        timestamp = format_timestamp(conversation["timestamp"])
 
+        if len(last_message) > 40:
+            last_message = last_message[:37] + "..."
+        
+        username_l = f"  {username} - Last message {timestamp}: {last_message} "
+
+        print("│" + pad_line(username_l, WIDTH) + "│")
+    
+    print("├" + "─" * WIDTH + "┤")
+    print("│" + pad_line(f"  Total: {len(conversations)} conversation(s)", WIDTH) + "│")
+    print("│" + pad_line("  Use: messages <username> to view", WIDTH) + "│")
+    print("╰" + "─" * WIDTH + "╯")
+    print()
+    
     print_separator()
 
 
@@ -375,16 +402,98 @@ def display_messages(username):
         print_info(f"No messages with @{username}.")
         return
     
+    WIDTH = 80
+    
     current_user = auth.get_current_user()
+
+    print()
+    print("╭" + "─" * WIDTH + "╮")
+    title = f" MESSAGES WITH @{username} "
+    if len(title) > WIDTH - 2:
+        title = title[:WIDTH - 5] + "..."
+    
+    title_pad = (WIDTH - len(title)) // 2
+    print("│" + " " * title_pad + title + " " * (WIDTH - title_pad - len(title)) + "│")
+    print("├" + "─" * WIDTH + "┤")
 
     for message in messages:
         if message["sender_id"] == current_user["id"]:
             sender = "You"
+            allignment = "right"
         
         else:
             sender = f"@{username}"
-        
-        time = format_timestamp(message["created"])
-        print(f" [{time}] {sender}: {message['content']}")
+            allignment = "left"
 
-    print_separator()
+        time = format_timestamp(message["created"])
+
+        if allignment == "left":
+            header_l = f" [{time}] {sender}"
+        else:
+            header_l = " " * (WIDTH - 1 - len(f"  {sender} [{time}]")) + f"  {sender} [{time}]"
+
+        print("│" + pad_line(header_l, WIDTH) + "│")
+
+        content_width = WIDTH - 8
+        wrapped_lines = wrap_text(message["content"], content_width)
+
+        for line in wrapped_lines:
+            if allignment == "left":
+                message_l = "  " + line
+            else:
+                message_l = " " * (WIDTH - 2 - len(line)) + line
+
+        print("│" + pad_line(message_l, WIDTH) + "│")
+
+    print("╰" + "─" * WIDTH + "╯")
+    print()
+
+
+def get_notifications():
+    if not auth.is_logged():
+        return False, "You must be logged in."
+    
+    current_user = auth.get_current_user()
+
+    notifications = db.get_notifications(current_user["id"])
+
+    return True, notifications
+
+
+def get_unread():
+    if not auth.is_logged():
+        return False, "You must be logged in.", None
+    
+    current_user = auth.get_current_user()
+
+    unread_n_count = db.get_unread_notifications_count(current_user["id"])
+    unread_m_count = db.get_unread_messages_count(current_user["id"])
+
+    return True, unread_n_count, unread_m_count
+
+
+def display_notifications():
+    success, notifications = get_notifications()
+
+    if not success:
+        print_error(notifications)
+        return
+    
+    if not notifications:
+        print_info("You have no notifications.")
+        return
+
+    print("Your Notifications:")
+    for notification in notifications:
+        if notification["is_read"]:
+            status = ""
+        else:
+            status = "[NEW]"
+
+        time = format_timestamp(notification["created"])
+
+        print(f"    {status} [{time}] {notification['content']}")
+
+    current_user = auth.get_current_user()
+
+    db.mark_notifications(current_user["id"])

@@ -169,6 +169,93 @@ def pad_line(text, width):
     return text + " " * padding
 
 
+def wrap_text(text, content_with_lines):
+    lines = []
+
+    for texts in text.split("\n"):
+        current_line = ""
+        current_width = 0
+
+        for word in texts.split(" "):
+            word_width = visible_width(word)
+
+            if current_width == 0:
+                if word_width > content_with_lines:
+                    while visible_width(word) > content_with_lines:
+                        part = ""
+                        part_width = 0
+
+                        for char in word:
+                            if unicodedata.east_asian_width(char) in ('F', 'W'):
+                                char_length = 2
+                            else:
+                                char_length = 1
+
+                            if (part_width + char_length) > content_with_lines:
+                                break
+
+                            part += char
+                            part_width += char_length
+
+                        lines.append(part)
+                        word = word[len(part):]
+
+                    if word:
+                        current_line = word
+                        current_width = visible_width(current_line)
+                    
+                else:
+                    current_line = word
+                    current_width = word_width
+                
+            elif (current_width + word_width + 1) <= content_with_lines:
+                current_line += " " + word
+                current_width += word_width + 1
+
+            else:
+                lines.append(current_line)
+
+                if word_width > content_with_lines:
+                    while visible_width(word) > content_with_lines:
+                        part = ""
+                        part_width = 0
+
+                        for char in word:
+                            if unicodedata.east_asian_width(char) in ('F', 'W'):
+                                char_length = 2
+                            else:
+                                char_length = 1
+
+                            if (part_width + char_length) > content_with_lines:
+                                break
+
+                            part += char
+                            part_width += char_length
+
+                        lines.append(part)
+                        word = word[len(part):]
+
+                    if word:
+                        current_line = word
+                        current_width = visible_width(current_line)
+
+                    else:
+                        current_line = ""
+                        current_width = 0
+
+                else:
+                    current_line = word
+                    current_width = word_width
+            
+        if current_line:
+            lines.append(current_line)
+            
+        elif not lines:
+            lines.append("")
+        
+    return lines
+
+
 def print_post(data):
     post_id = data.get("id", "")
     username = data.get("username", "unknown")
@@ -180,92 +267,6 @@ def print_post(data):
     image_ascii = data.get("image_ascii", None)
 
     WIDTH = 80
-    
-    def wrap_text(text, content_with_lines):
-        lines = []
-
-        for texts in text.split("\n"):
-            current_line = ""
-            current_width = 0
-
-            for word in texts.split(" "):
-                word_width = visible_width(word)
-
-                if current_width == 0:
-                    if word_width > content_with_lines:
-                        while visible_width(word) > content_with_lines:
-                            part = ""
-                            part_width = 0
-
-                            for char in word:
-                                if unicodedata.east_asian_width(char) in ('F', 'W'):
-                                    char_length = 2
-                                else:
-                                    char_length = 1
-
-                                if (part_width + char_length) > content_with_lines:
-                                    break
-
-                                part += char
-                                part_width += char_length
-
-                            lines.append(part)
-                            word = word[len(part):]
-
-                        if word:
-                            current_line = word
-                            current_width = visible_width(current_line)
-                    
-                    else:
-                        current_line = word
-                        current_width = word_width
-                
-                elif (current_width + word_width + 1) <= content_with_lines:
-                    current_line += " " + word
-                    current_width += word_width + 1
-
-                else:
-                    lines.append(current_line)
-
-                    if word_width > content_with_lines:
-                        while visible_width(word) > content_with_lines:
-                            part = ""
-                            part_width = 0
-
-                            for char in word:
-                                if unicodedata.east_asian_width(char) in ('F', 'W'):
-                                    char_length = 2
-                                else:
-                                    char_length = 1
-
-                                if (part_width + char_length) > content_with_lines:
-                                    break
-
-                                part += char
-                                part_width += char_length
-
-                            lines.append(part)
-                            word = word[len(part):]
-
-                        if word:
-                            current_line = word
-                            current_width = visible_width(current_line)
-
-                        else:
-                            current_line = ""
-                            current_width = 0
-
-                    else:
-                        current_line = word
-                        current_width = word_width
-            
-            if current_line:
-                lines.append(current_line)
-            
-            elif not lines:
-                lines.append("")
-        
-        return lines
     
     print("╭" + "─" * WIDTH + "╮")
     

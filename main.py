@@ -56,6 +56,7 @@ profile [<username>]             -> View a user's profile (or your own if no use
 dm <username> <message>          -> Send a direct message to a user
 inbox                            -> View your inbox
 messages <username>             -> View messages with a specific user
+notifications                   -> View your notifications
 """)
     
 
@@ -851,6 +852,14 @@ def execute_command(command, args): # returns True (continue) or False (exit)
         social.display_messages(username)
 
 
+    elif command == "notifications":
+        if len(args) != 0:
+            print_error("Usage: notifications")
+            return True
+        
+        social.display_notifications()
+
+
     # Admin commands
     elif command == "admin":
         if not auth.is_logged() or not auth.is_admin():
@@ -1031,7 +1040,25 @@ def main():
         try:
             if auth.is_logged():
                 user = auth.get_current_user()
-                prompt = f"\n@{user['username']}> "
+
+                success, unread_n_count, unread_m_count = social.get_unread()
+                
+                if not success:
+                    print_error(unread_n_count)
+                    continue
+
+                notifications = []
+                if unread_n_count > 0:
+                    notifications.append(f" [🔔{unread_n_count}]")
+                if unread_m_count > 0:
+                    notifications.append(f"[✉️{unread_m_count}]")
+                
+                if notifications:
+                    notifications_str = "".join(notifications)
+                else:
+                    notifications_str = ""
+
+                prompt = f"\n@{user['username']}{notifications_str}> "
             else:
                 prompt = "\nsocialnet> "
         

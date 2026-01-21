@@ -100,9 +100,20 @@ def init_db():
                    "sender_id INTEGER NOT NULL," \
                    "receiver_id INTEGER NOT NULL," \
                    "content TEXT NOT NULL," \
+                   "is_read INTEGER DEFAULT 0," \
                    "created INTEGER NOT NULL," \
                    "FOREIGN KEY (sender_id) REFERENCES users(id)," \
                    "FOREIGN KEY (receiver_id) REFERENCES users(id))")
+    
+    # Notifications table
+    cursor.execute("CREATE TABLE IF NOT EXISTS notifications (" \
+                   "id INTEGER PRIMARY KEY AUTOINCREMENT," \
+                   "user_id INTEGER NOT NULL," \
+                   "type TEXT NOT NULL," \
+                   "content TEXT NOT NULL," \
+                   "is_read INTEGER DEFAULT 0," \
+                   "created INTEGER NOT NULL," \
+                   "FOREIGN KEY (user_id) REFERENCES users(id))")
                    
     # admin logs
     cursor.execute("CREATE TABLE IF NOT EXISTS admin_logs (" \
@@ -344,18 +355,16 @@ def get_posts_by_id(user_id, limit=10, offset=0):
     
     return results
 
-def change_user_display_name(user_id, new_display_name):
+def get_post_owner(post_id):
     connection = connect_db()
     cursor = connection.cursor()
 
-    try:
-        cursor.execute("UPDATE users SET display_name = ? WHERE id = ?", (new_display_name, user_id))
-        connection.commit()
-        return True
+    cursor.execute("SELECT user_id FROM posts WHERE id = ?", (post_id,))
+    row = cursor.fetchone()
+    if row is None:
+        return None
     
-    except Exception as e:
-        print(f"Error: {e}")
-        return False
+    return row["user_id"]
     
 def like_post(user_id, post_id):
     connection = connect_db()
@@ -370,6 +379,12 @@ def like_post(user_id, post_id):
     try:
         cursor.execute("INSERT INTO likes (user_id, post_id, created) VALUES (?, ?, ?)", (user_id, post_id, now_timestamp))
         connection.commit()
+
+        owner = get_post_owner(post_id)
+        if owner != user_id:
+            user = get_user_by_id(user_id)
+            create_notification(owner, "like", f"User @{user['username']} liked your #{post_id} post.")
+
         return True, cursor.lastrowid
 
     except Exception as e:
@@ -433,6 +448,10 @@ def follow_user(current_user_id, target_user_id):
     try:
         cursor.execute("INSERT INTO follows (follower_id, followed_id, created) VALUES (?, ?, ?)", (current_user_id, target_user_id, now_timestamp))
         connection.commit()
+
+        follower = get_user_by_id(current_user_id)
+        create_notification(target_user_id, "follow", f"User @{follower['username']} started following you.")
+
         return True, cursor.lastrowid
     
     except Exception as e:
@@ -524,6 +543,11 @@ def create_comment(user_id, post_id, content):
         cursor.execute("INSERT INTO comments (user_id, post_id, content, created) VALUES (?, ?, ?, ?)", (user_id, post_id, content, now_timestamp))
         connection.commit()
 
+        owner = get_post_owner(post_id)
+        if owner != user_id:
+            user = get_user_by_id(user_id)
+            create_notification(owner, "comment", f"User @{user['username']} commented on your #{post_id} post.")
+
         return True, cursor.lastrowid
     
     except Exception as e:
@@ -587,6 +611,10 @@ def send_message(sender_id, receiver_id, content):
     try:
         cursor.execute("INSERT INTO messages (sender_id, receiver_id, content, created) VALUES (?, ?, ?, ?)", (sender_id, receiver_id, content, now_timestamp))
         connection.commit()
+
+        sender = get_user_by_id(sender_id)
+        create_notification(receiver_id, "message", f"New message from @{sender['username']}")
+        
         return True, cursor.lastrowid
     
     except Exception as e:
@@ -625,6 +653,75 @@ def get_conversations(user_id):
             })
 
     return results
+
+def create_notification(user_id, type, content):
+    connection = connect_db()
+    cursor = connection.cursor()
+
+    now_timestamp = timestamp()
+
+    cursor.execute("INSERT INTO notifications (user_id, type, content, created) VALUES (?, ?, ?, ?)", (user_id, type, content, now_timestamp))
+    connection.commit()
+
+def get_notifications(user_id, limit=20):
+    connection = connect_db()
+    cursor = connection.cursor()
+
+    cursor.execute("SELECT * FROM notifications WHERE user_id = ? ORDER BY created DESC LIMIT ?", (user_id, limit))
+
+    results = []
+    for row in cursor.fetchall():
+        results.append(dict(row))
+    
+    return results
+
+def get_unread_notifications_count(user_id):
+    connection = connect_db()
+    cursor = connection.cursor()
+
+    cursor.execute("SELECT COUNT(*) AS count FROM notifications WHERE user_id = ? AND is_read = 0", (user_id,))
+    row = cursor.fetchone()
+    if row is None:
+        return 0
+    
+    return row["count"]
+
+def get_unread_messages_count(user_id):
+    connection = connect_db()
+    cursor = connection.cursor()
+
+    cursor.execute("SELECT COUNT(*) AS count FROM messages WHERE receiver_id = ? AND is_read = 0", (user_id,))
+    row = cursor.fetchone()
+    if row is None:
+        return 0
+    
+    return row["count"]
+
+def mark_notifications(user_id):
+    connection = connect_db()
+    cursor = connection.cursor()
+
+    try:
+        cursor.execute("UPDATE notifications SET is_read = 1 WHERE user_id = ?", (user_id,))
+        connection.commit()
+        return True
+    
+    except Exception as e:
+        print(f"Error: {e}")
+        return False
+    
+def mark_messages(user_id, sender):
+    connection = connect_db()
+    cursor = connection.cursor()
+
+    try:
+        cursor.execute("UPDATE messages SET is_read = 1 WHERE receiver_id = ? AND sender_id = ?", (user_id, sender))
+        connection.commit()
+        return True
+    
+    except Exception as e:
+        print(f"Error: {e}")
+        return False
 
 def update_user(user_id, **kwargs):
     connection = connect_db()

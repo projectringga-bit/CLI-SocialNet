@@ -1,6 +1,6 @@
 import db
 import auth
-from utils import print_separator, format_timestamp, print_warning
+from utils import print_separator, format_timestamp, print_warning, pad_line
 
 def ban_user(username, reason="No reason provided"):
     if not auth.is_admin():
@@ -172,28 +172,43 @@ def print_banner_admin():
     
     stats = get_stats()
 
-    print("\n ADMIN DASHBOARD")
+    WIDTH = 80
 
-    print_separator()
+    print()
+    print("╔" + "═" * WIDTH + "╗")
+    title_pad = (WIDTH - len(" ADMIN DASHBOARD ")) // 2
+    print("║" + " " * title_pad + " ADMIN DASHBOARD " + " " * (WIDTH - len(" ADMIN DASHBOARD ") - title_pad) + "║")
 
-    print("Statistics:")
-    print(f"    Users: {stats.get("user_count")} (Banned: {stats.get("banned_count")})")
-    print(f"    Posts: {stats.get("post_count")}")
-    print(f"    Likes: {stats.get("like_count")}")
-    print(f"    Follows: {stats.get("follow_count")}")
+    print("╠" + "═" * WIDTH + "╣")
 
-    print("\n Admin commands:")
-    print("    admin                              -> View platform statistics")
-    print("    admin ban <username> [reason]      -> Ban a user")
-    print("    admin unban <username>             -> Unban a user")
-    print("    admin deletepost <post_id>         -> Delete a post")
-    print("    admin makeadmin <username>         -> Grant admin privileges to a user")
-    print("    admin removeadmin <username>       -> Revoke admin privileges from a user")
-    print("    admin verify <username>            -> Verify a user")
-    print("    admin unverify <username>          -> Unverify a user")
-    print("    admin logs [<page>]                  -> View admin logs")
+    print("║" + pad_line("  STATISTICS", WIDTH) + "║")
+    print("║" + " " * WIDTH + "║")
+    print("║" + pad_line(f"    Total Users:     {stats["user_count"]}", WIDTH) + "║")
+    print("║" + pad_line(f"    Banned Users:    {stats["banned_count"]}", WIDTH) + "║")
+    print("║" + pad_line(f"    Total Posts:     {stats["post_count"]}", WIDTH) + "║")
+    print("║" + pad_line(f"    Total Likes:     {stats["like_count"]}", WIDTH) + "║")
+    print("║" + pad_line(f"    Total Follows:   {stats["follow_count"]}", WIDTH) + "║")
+    print("║" + " " * WIDTH + "║")
+    
+    print("╠" + "═" * WIDTH + "╣")
+    print("║" + pad_line("  ADMIN COMMANDS", WIDTH) + "║")
+    print("║" + " " * WIDTH + "║")
 
-    print_separator()
+    commands = [
+        "admin                              -> View platform statistics",
+        "admin ban <username> [reason]      -> Ban a user",
+        "admin unban <username>             -> Unban a user",
+        "admin deletepost <post_id>         -> Delete a post",
+        "admin makeadmin <username>         -> Grant admin privileges to a user",
+        "admin removeadmin <username>       -> Revoke admin privileges from a user",
+        "admin verify <username>            -> Verify a user",
+        "admin unverify <username>          -> Unverify a user",
+        "admin logs [<page>]                -> View admin logs"
+    ]
+
+    for command in commands:
+        print("║" + pad_line(f"    {command}", WIDTH) + "║")
+    print("╚" + "═" * WIDTH + "╝")
 
 
 def print_admin_logs(page):
