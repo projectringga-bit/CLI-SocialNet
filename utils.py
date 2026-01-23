@@ -264,11 +264,31 @@ def print_post(data):
     created_at = data.get("created", None)
     likes_count = data.get("like_count", 0)
     comments_count = data.get("comment_count", 0)
+    reposts_count = data.get("repost_count", 0)
     image_ascii = data.get("image_ascii", None)
+    is_repost = data.get("repost_id", None)
+    quote_content = data.get("quote_content", None)
+    reposting_user = data.get("repost_username", None)
 
     WIDTH = 80
     
     print("╭" + "─" * WIDTH + "╮")
+
+    if is_repost:
+        repost_l = f" [Repost] @{reposting_user} reposted"
+        print("│" + pad_line(repost_l, WIDTH) + "│")
+
+        if quote_content:
+            print("│" + " " * WIDTH + "│")
+            quote_lines = wrap_text(quote_content, WIDTH - 4)
+
+            for line in quote_lines:
+                padded_line = line + " " * (WIDTH - 4 - visible_width(line))
+                print("│  " + padded_line + "  │")
+
+            print("│" + " " * WIDTH + "│")
+        
+        print("├" + "─" * WIDTH + "┤")
     
     if display_name:
         name = f"{display_name} (@{username})"
@@ -340,13 +360,13 @@ def print_post(data):
 
     print("│" + " " * WIDTH + "│")
 
-    statistics_line = f"  ❤️ {likes_count}   💬 {comments_count}  "
+    statistics_line = f"  ❤️ {likes_count}   🔁 {reposts_count}   💬 {comments_count}  "
     print("│" + pad_line(statistics_line, WIDTH) + "│")
 
     print("╰" + "─" * WIDTH + "╯")
 
 
-def print_profile(user, posts=None):
+def print_profile(user, posts=None, pinned=None):
     username = user.get("username", "unknown")
     display_name = user.get("display_name", "")
     bio = user.get("bio", "No bio")
@@ -491,6 +511,16 @@ def print_profile(user, posts=None):
     
     if user.get("is_follows_you"):
         print("  [✔] This user is following you")
+
+    
+    if pinned:
+        print()
+        print("╭" + "─" * WIDTH + "╮")
+        print("│" + " " * ((WIDTH - 14) // 2) + " PINNED POSTS " + " " * (WIDTH - ((WIDTH - 14) // 2) - 14) + "│")
+        print("╰" + "─" * WIDTH + "╯")
+
+        for post in pinned:
+            print_post(post)
     
     if posts:
         print()

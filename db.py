@@ -63,6 +63,37 @@ def init_db():
                     "deleted INTEGER DEFAULT 0," \
                     "FOREIGN KEY (user_id) REFERENCES users(id))")
     
+    # reposts table
+    cursor.execute("CREATE TABLE IF NOT EXISTS reposts (" \
+                   "id INTEGER PRIMARY KEY AUTOINCREMENT," \
+                   "user_id INTEGER NOT NULL," \
+                   "post_id INTEGER NOT NULL," \
+                   "content TEXT DEFAULT NULL," \
+                   "created INTEGER NOT NULL," \
+                   "is_deleted INTEGER DEFAULT 0," \
+                   "FOREIGN KEY (user_id) REFERENCES users(id)," \
+                   "FOREIGN KEY (post_id) REFERENCES posts(id))")
+    
+    # bookmarks table
+    cursor.execute("CREATE TABLE IF NOT EXISTS bookmarks (" \
+                   "id INTEGER PRIMARY KEY AUTOINCREMENT," \
+                   "user_id INTEGER NOT NULL," \
+                   "post_id INTEGER NOT NULL," \
+                   "created INTEGER NOT NULL," \
+                   "FOREIGN KEY (user_id) REFERENCES users(id)," \
+                   "FOREIGN KEY (post_id) REFERENCES posts(id)," \
+                   "UNIQUE(user_id, post_id))")  
+
+    # pinned posts table
+    cursor.execute("CREATE TABLE IF NOT EXISTS pinned_posts (" \
+                   "id INTEGER PRIMARY KEY AUTOINCREMENT," \
+                   "user_id INTEGER NOT NULL," \
+                   "post_id INTEGER NOT NULL," \
+                   "created INTEGER NOT NULL," \
+                   "FOREIGN KEY (user_id) REFERENCES users(id)," \
+                   "FOREIGN KEY (post_id) REFERENCES posts(id)," \
+                   "UNIQUE(user_id, post_id))")    
+    
     # likes
     cursor.execute("CREATE TABLE IF NOT EXISTS likes (" \
                    "id INTEGER PRIMARY KEY AUTOINCREMENT," \
@@ -104,6 +135,16 @@ def init_db():
                    "created INTEGER NOT NULL," \
                    "FOREIGN KEY (sender_id) REFERENCES users(id)," \
                    "FOREIGN KEY (receiver_id) REFERENCES users(id))")
+    
+    # Closed conversations table
+    cursor.execute("CREATE TABLE IF NOT EXISTS closed_conversations (" \
+                   "id INTEGER PRIMARY KEY AUTOINCREMENT," \
+                   "user_id INTEGER NOT NULL," \
+                   "other_user_id INTEGER NOT NULL," \
+                   "created INTEGER NOT NULL," \
+                   "FOREIGN KEY (user_id) REFERENCES users(id)," \
+                   "FOREIGN KEY (other_user_id) REFERENCES users(id)," \
+                   "UNIQUE(user_id, other_user_id))")
     
     # Notifications table
     cursor.execute("CREATE TABLE IF NOT EXISTS notifications (" \
@@ -299,7 +340,7 @@ def get_post(post_id):
     connection = connect_db()
     cursor = connection.cursor()
 
-    cursor.execute("SELECT posts.*, users.username, (SELECT COUNT(*) FROM likes WHERE likes.post_id = posts.id) AS like_count, (SELECT COUNT(*) FROM comments WHERE comments.post_id = posts.id) AS comment_count FROM posts JOIN users ON posts.user_id = users.id WHERE posts.id = ? AND posts.deleted = 0", (post_id,))
+    cursor.execute("SELECT posts.*, users.username, (SELECT COUNT(*) FROM likes WHERE likes.post_id = posts.id) AS like_count, (SELECT COUNT(*) FROM comments WHERE comments.post_id = posts.id) AS comment_count, (SELECT COUNT(*) FROM reposts WHERE reposts.post_id = posts.id and reposts.is_deleted = 0) AS repost_count FROM posts JOIN users ON posts.user_id = users.id WHERE posts.id = ? AND posts.deleted = 0", (post_id,))
     row = cursor.fetchone()
     if row is None:
         return None
@@ -323,7 +364,7 @@ def get_feed_posts(user_id, limit=10, offset=0):
     connection = connect_db()
     cursor = connection.cursor()
 
-    cursor.execute("SELECT posts.*, users.username, (SELECT COUNT(*) FROM likes WHERE likes.post_id = posts.id) AS like_count, (SELECT COUNT(*) FROM comments WHERE comments.post_id = posts.id) AS comment_count FROM posts JOIN users ON posts.user_id = users.id WHERE posts.deleted = 0 AND (posts.user_id = ? OR posts.user_id IN (SELECT followed_id FROM follows WHERE follower_id = ?)) ORDER BY posts.created DESC LIMIT ? OFFSET ?", (user_id, user_id, limit, offset))
+    cursor.execute("SELECT posts.*, users.username, (SELECT COUNT(*) FROM likes WHERE likes.post_id = posts.id) AS like_count, (SELECT COUNT(*) FROM comments WHERE comments.post_id = posts.id) AS comment_count, (SELECT COUNT(*) FROM reposts WHERE reposts.post_id = posts.id and reposts.is_deleted = 0) AS repost_count FROM posts JOIN users ON posts.user_id = users.id WHERE posts.deleted = 0 AND (posts.user_id = ? OR posts.user_id IN (SELECT followed_id FROM follows WHERE follower_id = ?)) ORDER BY posts.created DESC LIMIT ? OFFSET ?", (user_id, user_id, limit, offset))
     results = []
     for row in cursor.fetchall():
         results.append(dict(row))
@@ -335,7 +376,7 @@ def get_global_feed_posts(limit=10, offset=0):
     connection = connect_db()
     cursor = connection.cursor()
 
-    cursor.execute("SELECT posts.*, users.username, (SELECT COUNT(*) FROM likes WHERE likes.post_id = posts.id) AS like_count, (SELECT COUNT(*) FROM comments WHERE comments.post_id = posts.id) AS comment_count FROM posts JOIN users ON posts.user_id = users.id WHERE posts.deleted = 0 ORDER BY posts.created DESC LIMIT ? OFFSET ?", (limit, offset))
+    cursor.execute("SELECT posts.*, users.username, (SELECT COUNT(*) FROM likes WHERE likes.post_id = posts.id) AS like_count, (SELECT COUNT(*) FROM comments WHERE comments.post_id = posts.id) AS comment_count, (SELECT COUNT(*) FROM reposts WHERE reposts.post_id = posts.id and reposts.is_deleted = 0) AS repost_count FROM posts JOIN users ON posts.user_id = users.id WHERE posts.deleted = 0 ORDER BY posts.created DESC LIMIT ? OFFSET ?", (limit, offset))
     results = []
     for row in cursor.fetchall():
         results.append(dict(row))
@@ -347,13 +388,36 @@ def get_posts_by_id(user_id, limit=10, offset=0):
     connection = connect_db()
     cursor = connection.cursor()
 
-    cursor.execute("SELECT posts.*, users.username, (SELECT COUNT(*) FROM likes WHERE likes.post_id = posts.id) AS like_count, (SELECT COUNT(*) FROM comments WHERE comments.post_id = posts.id) AS comment_count FROM posts JOIN users ON posts.user_id = users.id WHERE posts.user_id = ? AND posts.deleted = 0 ORDER BY posts.created DESC LIMIT ? OFFSET ?", (user_id, limit, offset))
+    cursor.execute("""
+    SELECT posts.*, users.username,
+        (SELECT COUNT(*) FROM likes WHERE likes.post_id = posts.id) AS like_count,
+        (SELECT COUNT(*) FROM comments WHERE comments.post_id = posts.id) AS comment_count,
+        (SELECT COUNT(*) FROM reposts WHERE reposts.post_id = posts.id and reposts.is_deleted = 0) AS repost_count,
+        NULL AS repost_id, NULL AS repost_username, NULL AS quote_content, posts.created AS original_created
+    FROM posts JOIN users ON posts.user_id = users.id WHERE posts.user_id = ? AND posts.deleted = 0
+    """, (user_id,))
                    
     results = []
+
     for row in cursor.fetchall():
         results.append(dict(row))
+
+    cursor.execute("""
+    SELECT posts.*, users.username,
+        (SELECT COUNT(*) FROM likes WHERE likes.post_id = posts.id) AS like_count,
+        (SELECT COUNT(*) FROM comments WHERE comments.post_id = posts.id) AS comment_count,
+        (SELECT COUNT(*) FROM reposts WHERE reposts.post_id = posts.id and reposts.is_deleted = 0) AS repost_count,
+        reposts.id AS repost_id, reposting_user.username AS repost_username, reposts.content AS quote_content, reposts.created AS original_created
+    FROM reposts JOIN posts ON reposts.post_id = posts.id JOIN users ON posts.user_id = users.id JOIN users AS reposting_user ON reposts.user_id = reposting_user.id
+    WHERE reposts.user_id = ? AND reposts.is_deleted = 0 AND posts.deleted = 0
+    """, (user_id,))
+
+    for row in cursor.fetchall():
+        results.append(dict(row))
+
+    results.sort(key=lambda x: x.get("original_created"), reverse=True)
     
-    return results
+    return results[offset: offset + limit]
 
 def get_post_owner(post_id):
     connection = connect_db()
@@ -431,6 +495,111 @@ def get_posts_count(user_id):
         return 0
     
     return row["count"]
+
+def create_bookmark(user_id, post_id):
+    connection = connect_db()
+    cursor = connection.cursor()
+
+    cursor.execute("SELECT id FROM bookmarks WHERE user_id = ? AND post_id = ?", (user_id, post_id))
+    if cursor.fetchone() is not None:
+        return False, "Post is already bookmarked."
+    
+    now_timestamp = timestamp()
+
+    try:
+        cursor.execute("INSERT INTO bookmarks (user_id, post_id, created) VALUES (?, ?, ?)", (user_id, post_id, now_timestamp))
+        connection.commit()
+
+        return True, cursor.lastrowid
+
+    except Exception as e:
+        print(f"Error: {e}")
+        return False, f"Error: {e}"
+    
+def remove_bookmark(user_id, post_id):
+    connection = connect_db()
+    cursor = connection.cursor()
+
+    cursor.execute("SELECT id FROM bookmarks WHERE user_id = ? AND post_id = ?", (user_id, post_id))
+    row = cursor.fetchone()
+    if row is None:
+        return False, "Post is not bookmarked."
+    
+    try:
+        cursor.execute("DELETE FROM bookmarks WHERE user_id = ? AND post_id = ?", (user_id, post_id))
+        connection.commit()
+        return True, row["id"]
+    
+    except Exception as e:
+        print(f"Error: {e}")
+        return False, f"Error: {e}"
+    
+def get_bookmarks(user_id, limit = 5, page=1):
+    connection = connect_db()
+    cursor = connection.cursor()
+
+    offset = (page - 1) * limit
+
+    cursor.execute("SELECT posts.*, users.username, bookmarks.created as bookmark_created, (SELECT COUNT(*) FROM likes WHERE likes.post_id = posts.id) AS like_count, (SELECT COUNT(*) FROM reposts WHERE reposts.post_id = posts.id AND reposts.is_deleted = 0) AS repost_count, (SELECT COUNT(*) FROM comments WHERE comments.post_id = posts.id AND comments.deleted = 0) AS comment_count FROM bookmarks JOIN posts ON bookmarks.post_id = posts.id JOIN users ON posts.user_id = users.id WHERE bookmarks.user_id = ? AND posts.deleted = 0 ORDER BY bookmarks.created DESC LIMIT ? OFFSET ?", (user_id, limit, offset))
+    
+    results = []
+    for row in cursor.fetchall():
+        results.append(dict(row))
+
+    return results
+
+def pin_post(user_id, post_id):
+    connection = connect_db()
+    cursor = connection.cursor()
+
+    cursor.execute("SELECT COUNT(*) AS count FROM pinned_posts WHERE user_id = ?", (user_id,))
+    if cursor.fetchone()["count"] >= 3:
+        return False, "You can only pin up to 3 posts."
+
+    cursor.execute("SELECT id FROM pinned_posts WHERE user_id = ? AND post_id = ?", (user_id, post_id))
+    if cursor.fetchone() is not None:
+        return False, "Post is already pinned."
+    
+    now_timestamp = timestamp()
+
+    try:
+        cursor.execute("INSERT INTO pinned_posts (user_id, post_id, created) VALUES (?, ?, ?)", (user_id, post_id, now_timestamp))
+        connection.commit()
+        return True, cursor.lastrowid
+    
+    except Exception as e:
+        print(f"Error: {e}")
+        return False, f"Error: {e}"
+    
+def unpin_post(user_id, post_id):
+    connection = connect_db()
+    cursor = connection.cursor()
+
+    cursor.execute("SELECT id FROM pinned_posts WHERE user_id = ? AND post_id = ?", (user_id, post_id))
+    row = cursor.fetchone()
+    if row is None:
+        return False, "Post is not pinned."
+    
+    try:
+        cursor.execute("DELETE FROM pinned_posts WHERE user_id = ? AND post_id = ?", (user_id, post_id))
+        connection.commit()
+        return True, row["id"]
+    
+    except Exception as e:
+        print(f"Error: {e}")
+        return False, f"Error: {e}"
+    
+def get_pinned_posts(user_id):
+    connection = connect_db()
+    cursor = connection.cursor()
+
+    cursor.execute("SELECT posts.*, users.username, (SELECT COUNT(*) FROM likes WHERE likes.post_id = posts.id) AS like_count, (SELECT COUNT(*) FROM reposts WHERE reposts.post_id = posts.id AND reposts.is_deleted = 0) AS repost_count FROM pinned_posts JOIN posts ON pinned_posts.post_id = posts.id JOIN users ON posts.user_id = users.id WHERE pinned_posts.user_id = ? AND posts.deleted = 0 ORDER BY pinned_posts.created DESC", (user_id,))
+    
+    results = []
+    for row in cursor.fetchall():
+        results.append(dict(row))
+    
+    return results
 
 def follow_user(current_user_id, target_user_id):
     if current_user_id == target_user_id:
@@ -602,6 +771,74 @@ def delete_comment(comment_id):
         print(f"Error: {e}")
         return False
     
+def create_repost(user_id, post_id, content=None):
+    connection = connect_db()
+    cursor = connection.cursor()
+
+    cursor.execute("SELECT id FROM reposts WHERE user_id = ? AND post_id = ? AND is_deleted = 0", (user_id, post_id))
+        
+    if cursor.fetchone() is not None:
+        return False, "You have already reposted this post."
+
+    now_timestamp = timestamp()
+
+    try:
+        cursor.execute("INSERT INTO reposts (user_id, post_id, content, created) VALUES (?, ?, ?, ?)", (user_id, post_id, content, now_timestamp))
+        connection.commit()
+        
+        owner = get_post_owner(post_id)
+        if owner != user_id:
+            user = get_user_by_id(user_id)
+            if content:
+                create_notification(owner, "quote_repost", f"User @{user['username']} quote reposted your #{post_id} post.")
+            else:
+                create_notification(owner, "repost", f"User @{user['username']} reposted your #{post_id} post.")
+
+        return True, cursor.lastrowid
+    
+    except Exception as e:
+        return False, f"Error: {e}"
+    
+def delete_repost(user_id, repost_id):
+    connection = connect_db()
+    cursor = connection.cursor()
+
+    cursor.execute("SELECT id FROM reposts WHERE user_id = ? AND post_id = ? AND is_deleted = 0", (user_id, repost_id))
+    row = cursor.fetchone()
+    if row is None:
+        return False, "You have not reposted this post."
+
+    try:
+        cursor.execute("UPDATE reposts SET is_deleted = 1 WHERE post_id = ? AND user_id = ?", (repost_id, user_id))
+        connection.commit()
+        return True, cursor.lastrowid
+    
+    except Exception as e:
+        return False, f"Error: {e}"
+    
+def get_reposts_count(post_id):
+    connection = connect_db()
+    cursor = connection.cursor()
+
+    cursor.execute("SELECT COUNT(*) AS count FROM reposts WHERE post_id = ? AND is_deleted = 0", (post_id,))
+    row = cursor.fetchone()
+    if row is None:
+        return 0
+    
+    return row["count"]
+
+def get_reposts(post_id):
+    connection = connect_db()
+    cursor = connection.cursor()
+
+    cursor.execute("SELECT reposts.*, users.username FROM reposts JOIN users ON reposts.user_id = users.id WHERE reposts.post_id = ? AND reposts.is_deleted = 0 ORDER BY reposts.created DESC", (post_id,))
+
+    results = []
+    for row in cursor.fetchall():
+        results.append(dict(row))
+    
+    return results
+    
 def send_message(sender_id, receiver_id, content):
     connection = connect_db()
     cursor = connection.cursor()
@@ -611,6 +848,9 @@ def send_message(sender_id, receiver_id, content):
     try:
         cursor.execute("INSERT INTO messages (sender_id, receiver_id, content, created) VALUES (?, ?, ?, ?)", (sender_id, receiver_id, content, now_timestamp))
         connection.commit()
+
+        reopen_conversation(receiver_id, sender_id)
+        reopen_conversation(sender_id, receiver_id)
 
         sender = get_user_by_id(sender_id)
         create_notification(receiver_id, "message", f"New message from @{sender['username']}")
@@ -637,7 +877,7 @@ def get_conversations(user_id):
     connection = connect_db()
     cursor = connection.cursor()
 
-    cursor.execute("SELECT CASE WHEN sender_id = ? THEN receiver_id ELSE sender_id END AS other_id, content AS last_message, MAX(created) AS timestamp FROM messages WHERE sender_id = ? OR receiver_id = ? GROUP BY other_id ORDER BY timestamp DESC", (user_id, user_id, user_id))
+    cursor.execute("SELECT CASE WHEN sender_id = ? THEN receiver_id ELSE sender_id END AS other_id, content AS last_message, MAX(created) AS timestamp FROM messages WHERE (sender_id = ? OR receiver_id = ?) AND other_id NOT IN (SELECT other_user_id FROM closed_conversations WHERE user_id = ?) GROUP BY other_id ORDER BY timestamp DESC", (user_id, user_id, user_id, user_id))
 
     results = []
 
@@ -653,6 +893,40 @@ def get_conversations(user_id):
             })
 
     return results
+
+def close_conversation(user_id, other_id):
+    connection = connect_db()
+    cursor = connection.cursor()
+
+    now_timestamp = timestamp()
+
+    try:
+        cursor.execute("SELECT id FROM closed_conversations WHERE user_id = ? AND other_user_id = ?", (user_id, other_id))
+        if cursor.fetchone() is not None:
+            return False, "Conversation is already closed."
+        
+        cursor.execute("INSERT INTO closed_conversations (user_id, other_user_id, created) VALUES (?, ?, ?)", (user_id, other_id, now_timestamp))
+        connection.commit()
+
+        return True, cursor.lastrowid
+    
+    except Exception as e:
+        print(f"Error: {e}")
+        return False, f"Error: {e}"
+    
+def reopen_conversation(user_id, other_id):
+    connection = connect_db()
+    cursor = connection.cursor()
+
+    try:
+        cursor.execute("DELETE FROM closed_conversations WHERE user_id = ? AND other_user_id = ?", (user_id, other_id))
+        connection.commit()
+
+        return True
+    
+    except Exception as e:
+        print(f"Error: {e}")
+        return False
 
 def create_notification(user_id, type, content):
     connection = connect_db()
@@ -716,6 +990,19 @@ def mark_messages(user_id, sender):
 
     try:
         cursor.execute("UPDATE messages SET is_read = 1 WHERE receiver_id = ? AND sender_id = ?", (user_id, sender))
+        connection.commit()
+        return True
+    
+    except Exception as e:
+        print(f"Error: {e}")
+        return False
+    
+def clear_notifications(user_id):
+    connection = connect_db()
+    cursor = connection.cursor()
+
+    try:
+        cursor.execute("DELETE FROM notifications WHERE user_id = ?", (user_id,))
         connection.commit()
         return True
     

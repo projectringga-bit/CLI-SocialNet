@@ -160,15 +160,171 @@ def display_multiple_posts(posts, title):
     return True, None
 
 
-""" def view_user_posts(username):
-    user = db.get_user_by_username(username)
-
-    if user is None:
-        return []
+def repost(post_id):
+    if not auth.is_logged():
+        return False, "You must be logged in."
     
-    posts = db.get_posts_by_id(user["id"])
+    post = db.get_post(post_id)
+    if post is None:
+        return False, "Post not found."
+    
+    user = auth.get_current_user()
 
-    return posts """
+    success, result = db.create_repost(user["id"], post_id)
+    
+    if success:
+        return True, f"Post #{post_id} reposted."
+    else:
+        return False, result
+    
+
+def quote_post(post_id, content):
+    if not auth.is_logged():
+        return False, "You must be logged in."
+    
+    post = db.get_post(post_id)
+    if post is None:
+        return False, "Post not found."
+    
+    if len(content) > 500:
+        return False, "Quote content cannot exceed 500 characters."
+    
+    user = auth.get_current_user()
+
+    success, result = db.create_repost(user["id"], post_id, content)
+
+    if success:
+        return True, f"Post #{post_id} quoted."
+    else:
+        return False, result
+    
+
+def unrepost(post_id):
+    if not auth.is_logged():
+        return False, "You must be logged in."
+    
+    post = db.get_post(post_id)
+    if post is None:
+        return False, "Post not found."
+    
+    user = auth.get_current_user()
+
+    success, result = db.delete_repost(user["id"], post_id)
+
+    if success:
+        return True, f"Repost of post #{post_id} removed."
+    else:
+        return False, result
+    
+
+def get_reposts(post_id):
+    post = db.get_post(post_id)
+
+    if post is None:
+        return False, "Post not found."
+    
+    reposts = db.get_reposts(post_id)
+
+    return True, reposts
+
+
+def bookmark_post(post_id):
+    if not auth.is_logged():
+        return False, "You must be logged in."
+    
+    post = db.get_post(post_id)
+    if post is None:
+        return False, "Post not found."
+    
+    user = auth.get_current_user()
+
+    success, result = db.create_bookmark(user["id"], post_id)
+
+    if success:
+        return True, f"Post #{post_id} bookmarked."
+    else:
+        return False, result
+
+
+def unbookmark_post(post_id):
+    if not auth.is_logged():
+        return False, "You must be logged in."
+    
+    post = db.get_post(post_id)
+    if post is None:
+        return False, "Post not found."
+    
+    user = auth.get_current_user()
+
+    success, result = db.remove_bookmark(user["id"], post_id)
+
+    if success:
+        return True, f"Post #{post_id} unbookmarked."
+    else:
+        return False, result
+    
+
+def get_bookmarks(page):
+    if not auth.is_logged():
+        return False, "You must be logged in."
+    
+    user = auth.get_current_user()
+
+    bookmarks = db.get_bookmarks(user["id"], page=page)
+
+    return True, bookmarks
+
+
+def pin_post(post_id):
+    if not auth.is_logged():
+        return False, "You must be logged in."
+    
+    post = db.get_post(post_id)
+    if post is None:
+        return False, "Post not found."
+
+    user = auth.get_current_user()
+
+    if post["user_id"] != user["id"]:
+        return False, "You can only pin your own posts."
+
+    success, result = db.pin_post(user["id"], post_id)
+
+    if success:
+        return True, f"Post #{post_id} pinned."
+    else:
+        return False, result
+    
+
+def unpin_post(post_id):
+    if not auth.is_logged():
+        return False, "You must be logged in."
+    
+    post = db.get_post(post_id)
+    if post is None:
+        return False, "Post not found."
+    
+    user = auth.get_current_user()
+
+    if post["user_id"] != user["id"]:
+        return False, "You can only unpin your own posts."
+    
+    success, result = db.unpin_post(user["id"], post_id)
+
+    if success:
+        return True, f"Post #{post_id} unpinned."
+    else:
+        return False, result
+    
+
+def get_pinned_posts_by_user(username):
+    user = db.get_user_by_username(username)
+    if user is None:
+        return False, "User not found."
+
+    pinned_posts = db.get_pinned_posts(user["id"])
+
+    return True, pinned_posts
 
 
 def like_post(post_id):

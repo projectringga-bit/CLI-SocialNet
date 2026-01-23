@@ -33,6 +33,16 @@ posturl <image_url> [<caption>]  -> Create a new post with an image from a URL
 viewpost <post_id>               -> View a specific post
 deletepost <post_id>             -> Delete a specific post
 myposts                          -> View your own posts
+repost <post_id>                 -> Repost a post
+unrepost <post_id>               -> Remove your repost of a post
+quote <post_id> <comment>        -> Quote a post with a comment
+reposts <post_id>                -> View users who reposted a post
+pin <post_id>                    -> Pin a post
+unpin <post_id>                  -> Unpin a post
+pinned [<username>]              -> View pinned posts of a user (or yourself if no username is provided)
+bookmark <post_id>               -> Bookmark a post
+unbookmark <post_id>             -> Remove a bookmark from a post
+bookmarks                        -> View your bookmarked posts
 displayname <new_display_name>   -> Change your display name
 like <post_id>                   -> Like a post
 unlike <post_id>                 -> Unlike a post
@@ -55,8 +65,10 @@ removeavatar                     -> Remove your avatar
 profile [<username>]             -> View a user's profile (or your own if no username is provided)
 dm <username> <message>          -> Send a direct message to a user
 inbox                            -> View your inbox
-messages <username>             -> View messages with a specific user
-notifications                   -> View your notifications
+messages <username>              -> View messages with a specific user
+closedm <username>               -> Close the conversation with a specific user
+notifications                    -> View your notifications
+clearn                           -> Clear your notifications
 """)
     
 
@@ -400,7 +412,7 @@ def execute_command(command, args): # returns True (continue) or False (exit)
         
         user = auth.get_current_user()
 
-        my_posts = posts.get_my_posts(user['id'], page=page)
+        my_posts = posts.get_my_posts(page=page)
 
         success, message = posts.display_multiple_posts(my_posts, f"@{user['username']}'s Posts")
 
@@ -409,6 +421,226 @@ def execute_command(command, args): # returns True (continue) or False (exit)
         else:
             print_error(message)
 
+
+    elif command == "repost":
+        if not auth.is_logged():
+            print_warning("You must be logged in to repost a post.")
+            return True
+        
+        if len(args) != 1:
+            print_error("Usage: repost <post_id>")
+            return True
+        
+        post_id = args[0]
+
+        success, message = posts.repost(post_id)
+
+        if success:
+            print_success(message)
+        else:
+            print_error(message)
+
+    
+    elif command == "unrepost":
+        if not auth.is_logged():
+            print_warning("You must be logged in to unrepost a post.")
+            return True
+        
+        if len(args) != 1:
+            print_error("Usage: unrepost <post_id>")
+            return True
+        
+        post_id = args[0]
+
+        success, message = posts.unrepost(post_id)
+
+        if success:
+            print_success(message)
+        else:
+            print_error(message)
+
+    
+    elif command == "quote":
+        if not auth.is_logged():
+            print_warning("You must be logged in to quote a post.")
+            return True
+        
+        if len(args) < 2:
+            print_error("Usage: quote <post_id> <comment>")
+            return True
+        
+        post_id = args[0]
+        comment = " ".join(args[1:])
+
+        success, message = posts.quote_post(post_id, comment)
+
+        if success:
+            print_success(message)
+        else:
+            print_error(message)
+
+
+    elif command == "reposts":
+        if len(args) != 1:
+            print_error("Usage: reposts <post_id>")
+            return True
+        
+        post_id = args[0]
+
+        success, reposts = posts.get_reposts(post_id)
+
+        if not success:
+            print_error(reposts)
+            return True
+        
+        if reposts:
+            print(f"\nReposts of post #{post_id}:")
+            for repost in reposts:
+                print(f"    - @{repost['username']}")
+
+        else:
+            print_info("No reposts of this post yet.")
+
+
+    elif command == "pin":
+        if not auth.is_logged():
+            print_warning("You must be logged in to pin a post.")
+            return True
+        
+        if len(args) != 1:
+            print_error("Usage: pin <post_id>")
+            return True
+        
+        post_id = args[0]
+
+        success, message = posts.pin_post(post_id)
+
+        if success:
+            print_success(message)
+        else:
+            print_error(message)
+
+
+    elif command == "unpin":
+        if not auth.is_logged():
+            print_warning("You must be logged in to unpin a post.")
+            return True
+        
+        if len(args) != 1:
+            print_error("Usage: unpin <post_id>")
+            return True
+        
+        post_id = args[0]
+
+        success, message = posts.unpin_post(post_id)
+
+        if success:
+            print_success(message)
+        else:
+            print_error(message)
+
+
+    elif command == "pinned":
+        if len(args) > 1:
+            print_error("Usage: pinned [<username>]")
+            return True
+        
+        if len(args) == 1:
+            username = args[0].lstrip('@')
+
+        else:
+            if not auth.is_logged():
+                print_warning("You must be logged in to view your pinned posts.")
+                return True
+            
+            user = auth.get_current_user()
+            username = user['username']
+
+        success, pinned_posts = posts.get_pinned_posts_by_user(username)
+
+        if not success:
+            print_error(pinned_posts)
+            return True
+
+        if pinned_posts:
+            print(f"\nPinned posts of @{username}:")
+            for post in pinned_posts:
+                print_post(post)
+
+        else:
+            print_info(f"@{username} has no pinned posts.")
+
+
+    elif command == "bookmark":
+        if not auth.is_logged():
+            print_warning("You must be logged in to bookmark a post.")
+            return True
+        
+        if len(args) != 1:
+            print_error("Usage: bookmark <post_id>")
+            return True
+        
+        post_id = args[0]
+
+        success, message = posts.bookmark_post(post_id)
+
+        if success:
+            print_success(message)
+        else:
+            print_error(message)
+
+
+    elif command == "unbookmark":
+        if not auth.is_logged():
+            print_warning("You must be logged in to unbookmark a post.")
+            return True
+        
+        if len(args) != 1:
+            print_error("Usage: unbookmark <post_id>")
+            return True
+        
+        post_id = args[0]
+
+        success, message = posts.unbookmark_post(post_id)
+
+        if success:
+            print_success(message)
+        else:
+            print_error(message)
+
+
+    elif command == "bookmarks":
+        if not auth.is_logged():
+            print_warning("You must be logged in to view your bookmarks.")
+            return True
+        
+        if len(args) > 1:
+            print_error("Usage: bookmarks [<page>]")
+            return True
+        
+        page = 1
+        if len(args) == 1:
+            try:
+                page = int(args[0])
+
+            except ValueError:
+                print_error("Page must be a number.")
+                return True
+        
+        success, bookmarks = posts.get_bookmarks(page)
+
+        if not success:
+            print_error(bookmarks)
+            return True
+        
+        if bookmarks:
+            print(f"\nYour Bookmarked Posts - Page {page}:")
+            for post in bookmarks:
+                print_post(post)
+        
+        else:
+            print_info("You have no bookmarked posts.")
+            
 
     elif command == "like":
         if not auth.is_logged():
@@ -850,6 +1082,35 @@ def execute_command(command, args): # returns True (continue) or False (exit)
         username = args[0].lstrip('@')
 
         social.display_messages(username)
+
+
+    elif command == "closedm":
+        if len(args) != 1:
+            print_error("Usage: closedm <username>")
+            return True
+        
+        username = args[0].lstrip('@')
+
+        success, message = social.close_conversation(username)
+
+        if success:
+            print_success(message)
+        else:
+            print_error(message)
+    
+
+    elif command == "clearn":
+        if len(args) != 0:
+            print_error("Usage: clearn")
+            return True
+        
+        success, message = social.clear_notifications()
+
+        if success:
+            print_success(message)
+        else:
+            print_error(message)
+
 
 
     elif command == "notifications":

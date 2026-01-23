@@ -284,8 +284,9 @@ def display_profile(username):
         return False, "User not found."
     
     posts = db.get_posts_by_id(profile["id"], limit=15)
+    pinned = db.get_pinned_posts(profile["id"])
     
-    print_profile(profile, posts=posts)
+    print_profile(profile, posts=posts, pinned=pinned)
 
     return True, None
 
@@ -343,6 +344,22 @@ def get_messages(username):
     messages = db.get_messages(current_user["id"], target["id"])
 
     return True, messages
+
+
+def close_conversation(username):
+    if not auth.is_logged():
+        return False, "You must be logged in."
+    
+    current_user = auth.get_current_user()
+    target = db.get_user_by_username(username)
+
+    if target is None:
+        return False, "User not found."
+    
+    db.close_conversation(current_user["id"], target["id"])
+
+    return True, f"Conversation with @{username} has been closed."
+
 
 def display_conversations():
     success, conversations = get_conversations()
@@ -458,6 +475,17 @@ def get_notifications():
     notifications = db.get_notifications(current_user["id"])
 
     return True, notifications
+
+
+def clear_notifications():
+    if not auth.is_logged():
+        return False, "You must be logged in."
+    
+    current_user = auth.get_current_user()
+
+    db.clear_notifications(current_user["id"])
+
+    return True, "Cleared"
 
 
 def get_unread():
