@@ -11,7 +11,7 @@ from utils import print_success, print_error, print_warning, print_info, print_s
 from utils import clear
 
 
-def help_message():
+def help_message_for_logged():
     print("""
 Available commands:
 
@@ -40,6 +40,9 @@ reposts <post_id>                -> View users who reposted a post
 pin <post_id>                    -> Pin a post
 unpin <post_id>                  -> Unpin a post
 pinned [<username>]              -> View pinned posts of a user (or yourself if no username is provided)
+hashtag <hashtag> [<page>]       -> View posts with a specific hashtag
+htrending                        -> View trending hashtags
+hsearch <query> [<page>]         -> Search for hashtags
 bookmark <post_id>               -> Bookmark a post
 unbookmark <post_id>             -> Remove a bookmark from a post
 bookmarks                        -> View your bookmarked posts
@@ -69,6 +72,30 @@ messages <username>              -> View messages with a specific user
 closedm <username>               -> Close the conversation with a specific user
 notifications                    -> View your notifications
 clearn                           -> Clear your notifications
+""")
+    
+
+def help_message_for_not_logged():
+    print("""
+Available commands for not logged in users:
+help                             -> Show this help message
+exit, quit                       -> Exit the application
+clear                            -> Clear the console
+register <username>              -> Register a new user
+login <username>                 -> Login
+whoami                           -> Show the currently logged in user
+home                             -> Show the home
+explore [<page>]                 -> View the global feed
+viewpost <post_id>               -> View a specific post
+reposts <post_id>                -> View users who reposted a post
+pinned [<username>]              -> View pinned posts of a user
+hashtag <hashtag> [<page>]       -> View posts with a specific hashtag
+htrending                        -> View trending hashtags
+hsearch <query> [<page>]         -> Search for hashtags
+likes <post_id>                  -> View likes on a post
+comments <post_id>               -> View comments on a post
+
+[Other commands require you to be logged in]
 """)
     
 
@@ -112,7 +139,10 @@ def execute_command(command, args): # returns True (continue) or False (exit)
 
 
     elif command == "help":
-        help_message()
+        if auth.is_logged():
+            help_message_for_logged()
+        else:
+            help_message_for_not_logged()
 
 
     elif command == "clear":
@@ -640,7 +670,89 @@ def execute_command(command, args): # returns True (continue) or False (exit)
         
         else:
             print_info("You have no bookmarked posts.")
+
+        
+    elif command == "hashtag":
+        if len(args) < 1:
+            print_error("Usage: hashtag <hashtag> [<page>]")
+            return True
+        
+        page = 1
+        hashtag = args[0].lstrip('#')
+
+        if len(args) == 2:
+            try:
+                page = int(args[1])
+
+            except ValueError:
+                print_error("Page must be a number.")
+                return True
             
+        success, hashtag_posts = posts.search_hashtag(hashtag, page)
+
+        if not success:
+            print_error(hashtag_posts)
+            return True
+        
+        if hashtag_posts:
+            print(f"\nPosts with hashtag #{hashtag} - Page {page}:")
+            for post in hashtag_posts:
+                print_post(post)
+        
+        else:
+            print_info(f"No posts found with hashtag #{hashtag}.")
+
+
+    elif command == "htrending":
+        if len(args) != 0:
+            print_error("Usage: htrending")
+            return True
+        
+        success, trending_hashtags = posts.trending_hashtags()
+
+        if not success:
+            print_error(trending_hashtags)
+            return True
+        
+        if trending_hashtags:
+            print("\nTrending Hashtags:")
+            for tag in trending_hashtags:
+                print(f"    - #{tag['hashtag']} ({tag['usage_count']} uses)")
+
+        else:
+            print_info("No trending hashtags at the moment.")
+
+
+    elif command == "hsearch":
+        if len(args) < 1:
+            print_error("Usage: hsearch <query> [<page>]")
+            return True
+        
+        page = 1
+        hashtag = args[0].lstrip('#')
+
+        if len(args) == 2:
+            try:
+                page = int(args[1])
+
+            except ValueError:
+                print_error("Page must be a number.")
+                return True
+            
+        success, search_results = posts.search_hashtags(hashtag, page)
+
+        if not success:
+            print_error(search_results)
+            return True
+        
+        if search_results:
+            print(f"\nHashtag Search Results for #{hashtag} - Page {page}:")
+            for tag in search_results:
+                print(f"    - #{tag['hashtag']} ({tag['usage_count']} uses)")
+
+        else:
+            print_info(f'No hashtags found for "{hashtag}".')
+
 
     elif command == "like":
         if not auth.is_logged():
@@ -680,11 +792,7 @@ def execute_command(command, args): # returns True (continue) or False (exit)
             print_error(message)
 
 
-    elif command == "likes":
-        if not auth.is_logged():
-            print_warning("You must be logged in to view likes on a post.")
-            return True
-        
+    elif command == "likes":        
         if len(args) != 1:
             print_error("Usage: likes <post_id>")
             return True
@@ -1051,6 +1159,10 @@ def execute_command(command, args): # returns True (continue) or False (exit)
 
 
     elif command == "dm":
+        if not auth.is_logged():
+            print_warning("You must be logged in to send direct messages.")
+            return True
+        
         if len(args) < 2:
             print_error("Usage: dm <username> <message>")
             return True
@@ -1067,6 +1179,10 @@ def execute_command(command, args): # returns True (continue) or False (exit)
 
 
     elif command == "inbox":
+        if not auth.is_logged():
+            print_warning("You must be logged in to view your inbox.")
+            return True
+        
         if len(args) != 0:
             print_error("Usage: inbox")
             return True
@@ -1075,6 +1191,10 @@ def execute_command(command, args): # returns True (continue) or False (exit)
 
     
     elif command == "messages":
+        if not auth.is_logged():
+            print_warning("You must be logged in to view messages.")
+            return True
+        
         if len(args) != 1:
             print_error("Usage: messages <username>")
             return True
@@ -1085,6 +1205,10 @@ def execute_command(command, args): # returns True (continue) or False (exit)
 
 
     elif command == "closedm":
+        if not auth.is_logged():
+            print_warning("You must be logged in to close a conversation.")
+            return True
+        
         if len(args) != 1:
             print_error("Usage: closedm <username>")
             return True

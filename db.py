@@ -1,5 +1,5 @@
 import sqlite3
-import os
+import re
 
 from utils import hash_password, timestamp
 from config import DEFAULT_ADMIN_PASSWORD
@@ -92,7 +92,22 @@ def init_db():
                    "created INTEGER NOT NULL," \
                    "FOREIGN KEY (user_id) REFERENCES users(id)," \
                    "FOREIGN KEY (post_id) REFERENCES posts(id)," \
-                   "UNIQUE(user_id, post_id))")    
+                   "UNIQUE(user_id, post_id))")
+    
+    # hashtags table
+    cursor.execute("CREATE TABLE IF NOT EXISTS hashtags (" \
+                   "id INTEGER PRIMARY KEY AUTOINCREMENT," \
+                   "hashtag TEXT UNIQUE NOT NULL," \
+                   "created INTEGER NOT NULL)")
+    
+    # "post linked to hashtags" table
+    cursor.execute("CREATE TABLE IF NOT EXISTS post_hashtags (" \
+                   "id INTEGER PRIMARY KEY AUTOINCREMENT," \
+                   "post_id INTEGER NOT NULL," \
+                   "hashtag_id INTEGER NOT NULL," \
+                   "FOREIGN KEY (post_id) REFERENCES posts(id)," \
+                   "FOREIGN KEY (hashtag_id) REFERENCES hashtags(id)," \
+                   "UNIQUE(post_id, hashtag_id))")
     
     # likes
     cursor.execute("CREATE TABLE IF NOT EXISTS likes (" \
@@ -599,6 +614,83 @@ def get_pinned_posts(user_id):
     for row in cursor.fetchall():
         results.append(dict(row))
     
+    return results
+
+def hashtag_detection(post_id, content):
+    connection = connect_db()
+    cursor = connection.cursor()
+
+    hashtags = re.findall(r"#(\w+)", content)
+
+    for hashtag in hashtags:
+        hashtag_lower = hashtag.lower().strip()
+
+        cursor.execute("SELECT id FROM hashtags WHERE hashtag = ?", (hashtag_lower,))
+        row = cursor.fetchone()
+        if row is None:
+            now_timestamp = timestamp()
+
+            cursor.execute("INSERT INTO hashtags (hashtag, created) VALUES (?, ?)", (hashtag_lower, now_timestamp))
+            connection.commit()
+
+            hashtag_id = cursor.lastrowid
+
+        else:
+            hashtag_id = row["id"]
+        
+        try:
+            cursor.execute("INSERT OR IGNORE INTO post_hashtags (post_id, hashtag_id) VALUES (?, ?)", (post_id, hashtag_id))
+            connection.commit()
+
+        except Exception as e:
+            print(f"Error: {e}")
+            continue
+
+        return hashtags
+
+
+def get_posts_using_hashtag(hashtag, limit=10, offset=0):
+    connection = connect_db()
+    cursor = connection.cursor()
+
+    hashtag_lower = hashtag.lower().strip().lstrip("#")
+
+    cursor.execute("SELECT posts.*, users.username,"
+    "(SELECT COUNT(*) FROM likes WHERE likes.post_id = posts.id) AS like_count,"
+    "(SELECT COUNT(*) FROM comments WHERE comments.post_id = posts.id) AS comment_count,"
+    "(SELECT COUNT(*) FROM reposts WHERE reposts.post_id = posts.id and reposts.is_deleted = 0) AS repost_count " \
+    "FROM posts JOIN users ON posts.user_id = users.id JOIN post_hashtags ON posts.id = post_hashtags.post_id JOIN hashtags ON post_hashtags.hashtag_id = hashtags.id WHERE hashtags.hashtag = ? AND posts.deleted = 0 AND users.is_banned = 0 ORDER BY posts.created DESC LIMIT ? OFFSET ?", (hashtag_lower, limit, offset))
+    
+    results = []
+    for row in cursor.fetchall():
+        results.append(dict(row))
+    
+    return results
+
+def get_trending_hashtags(limit=10):
+    connection = connect_db()
+    cursor = connection.cursor()
+
+    cursor.execute("SELECT hashtags.hashtag, COUNT(post_hashtags.post_id) AS usage_count FROM hashtags JOIN post_hashtags ON hashtags.id = post_hashtags.hashtag_id JOIN posts ON post_hashtags.post_id = posts.id WHERE posts.deleted = 0 GROUP BY hashtags.id ORDER BY usage_count DESC LIMIT ?", (limit,))
+
+    results = []
+    for row in cursor.fetchall():
+        results.append(dict(row))
+    
+    return results
+
+def search_hashtags(hashtag, limit, offset):
+    connection = connect_db()
+    cursor = connection.cursor()
+
+    hashtag_search = f"{hashtag.lower().strip()}%"
+
+    cursor.execute("SELECT hashtags.*, COUNT(post_hashtags.post_id) AS usage_count FROM hashtags LEFT JOIN post_hashtags ON hashtags.id = post_hashtags.hashtag_id WHERE hashtags.hashtag LIKE ? GROUP BY hashtags.id ORDER BY usage_count DESC LIMIT ? OFFSET ?", (hashtag_search, limit, offset))
+    
+    results = []
+    for row in cursor.fetchall():
+        results.append(dict(row))
+
     return results
 
 def follow_user(current_user_id, target_user_id):

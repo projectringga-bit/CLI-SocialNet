@@ -33,7 +33,11 @@ def create_post(content, image_path=None, image_url=None):
     success, result = db.create_post(user["id"], content, image_ascii)
 
     if success:
+        post_id = result
+        db.hashtag_detection(post_id, content)
+
         return True, f"Post created! ID: {result}"
+    
     else:
         return False, result
 
@@ -325,6 +329,28 @@ def get_pinned_posts_by_user(username):
     pinned_posts = db.get_pinned_posts(user["id"])
 
     return True, pinned_posts
+
+
+def search_hashtag(hashtag, page=1):
+    offset = (page - 1) * 10
+
+    posts = db.get_posts_using_hashtag(hashtag, limit=10, offset=offset)
+
+    return True, posts
+
+
+def trending_hashtags():
+    hashtags = db.get_trending_hashtags(10)
+
+    return True, hashtags
+
+
+def search_hashtags(hashtag, page=1):
+    offset = (page - 1) * 10
+
+    hashtags = db.search_hashtags(hashtag, limit=20, offset=offset)
+
+    return True, hashtags
 
 
 def like_post(post_id):
