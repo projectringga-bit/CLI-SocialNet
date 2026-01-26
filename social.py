@@ -525,3 +525,11 @@ def display_notifications():
     current_user = auth.get_current_user()
 
     db.mark_notifications(current_user["id"])
+
+
+def search_users(query, page=1):
+    offset = (page - 1) * 10
+
+    users = db.search_users(query, limit=10, offset=offset)
+
+    return True, users

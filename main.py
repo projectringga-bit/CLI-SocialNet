@@ -32,6 +32,8 @@ postimg <image_path> [<caption>] -> Create a new post with an image from a local
 posturl <image_url> [<caption>]  -> Create a new post with an image from a URL
 viewpost <post_id>               -> View a specific post
 deletepost <post_id>             -> Delete a specific post
+search <query> [<page>]          -> Search for posts
+usersearch <query> [<page>]      -> Search for users
 myposts                          -> View your own posts
 repost <post_id>                 -> Repost a post
 unrepost <post_id>               -> Remove your repost of a post
@@ -43,6 +45,7 @@ pinned [<username>]              -> View pinned posts of a user (or yourself if 
 hashtag <hashtag> [<page>]       -> View posts with a specific hashtag
 htrending                        -> View trending hashtags
 hsearch <query> [<page>]         -> Search for hashtags
+mentions <username> [<page>]     -> View posts mentioning a user
 bookmark <post_id>               -> Bookmark a post
 unbookmark <post_id>             -> Remove a bookmark from a post
 bookmarks                        -> View your bookmarked posts
@@ -71,6 +74,8 @@ inbox                            -> View your inbox
 messages <username>              -> View messages with a specific user
 closedm <username>               -> Close the conversation with a specific user
 notifications                    -> View your notifications
+alias [<alias> [<command>]]      -> Create an alias for a command
+unalias <alias>                  -> Remove an alias
 clearn                           -> Clear your notifications
 """)
     
@@ -87,11 +92,14 @@ whoami                           -> Show the currently logged in user
 home                             -> Show the home
 explore [<page>]                 -> View the global feed
 viewpost <post_id>               -> View a specific post
+search <query> [<page>]          -> Search for posts
+usersearch <query> [<page>]      -> Search for users
 reposts <post_id>                -> View users who reposted a post
 pinned [<username>]              -> View pinned posts of a user
 hashtag <hashtag> [<page>]       -> View posts with a specific hashtag
 htrending                        -> View trending hashtags
 hsearch <query> [<page>]         -> Search for hashtags
+mentions <username> [<page>]     -> View posts mentioning a user
 likes <post_id>                  -> View likes on a post
 comments <post_id>               -> View comments on a post
 
@@ -125,6 +133,13 @@ def parse_command(input_command):
     
     command = parts[0].lower()
     args = parts[1:]
+
+    if auth.is_logged():
+        user = auth.get_current_user()
+        aliases = db.get_user_aliases(user["id"])
+
+        if command in aliases:
+            command = aliases[command]
 
     return command, args
 
@@ -754,6 +769,37 @@ def execute_command(command, args): # returns True (continue) or False (exit)
             print_info(f'No hashtags found for "{hashtag}".')
 
 
+    elif command == "mentions":
+        if len(args) < 1:
+            print_error("Usage: mentions <username> [<page>]")
+            return True
+        
+        page = 1
+        username = args[0].lstrip('@')
+
+        if len(args) == 2:
+            try:
+                page = int(args[1])
+
+            except ValueError:
+                print_error("Page must be a number.")
+                return True
+            
+        success, mention_posts = posts.get_mentions(username, page)
+
+        if not success:
+            print_error(mention_posts)
+            return True
+        
+        if mention_posts:
+            print(f"\nPosts mentioning @{username} - Page {page}:")
+            for post in mention_posts:
+                print_post(post)
+
+        else:
+            print_info(f'No posts found mentioning @{username}.')
+
+
     elif command == "like":
         if not auth.is_logged():
             print_warning("You must be logged in to like a post.")
@@ -965,6 +1011,69 @@ def execute_command(command, args): # returns True (continue) or False (exit)
 
         else:
             print_info(following)
+
+
+    elif command == "search":
+        if not args:
+            print_error("Usage: search <query> [<page>]")
+            return True
+        
+        page = 1
+        query = args[0]
+
+        if len(args) == 2:
+            try:
+                page = int(args[1])
+
+            except ValueError:
+                print_error("Page must be a number.")
+                return True
+            
+        success, results = posts.search_posts(query, page)
+
+        if success:
+            if results:
+                print(f"\nSearch Results for '{query}':")
+                for post in results:
+                    print_post(post)
+            else:
+                print_info(f"No posts found matching '{query}'.")
+
+        else:
+            print_error(results)
+
+    
+    elif command == "usersearch":
+        if not args:
+            print_error("Usage: usersearch <query> [<page>]")
+            return True
+        
+        page = 1
+        query = args[0]
+
+        if len(args) == 2:
+            try:
+                page = int(args[1])
+
+            except ValueError:
+                print_error("Page must be a number.")
+                return True
+            
+        success, results = social.search_users(query, page)
+
+        if success:
+            if results:
+                print(f"\nUser Search Results for '{query}':")
+                for user in results:
+                    if user['display_name']:
+                        print(f"    - @{user['username']} ({user['display_name']})")
+                    else:
+                        print(f"    - @{user['username']}")
+            else:
+                print_info(f"No users found matching '{query}'.")
+
+        else:
+            print_error(results)
 
 
     elif command == "profile":
@@ -1236,13 +1345,77 @@ def execute_command(command, args): # returns True (continue) or False (exit)
             print_error(message)
 
 
-
     elif command == "notifications":
         if len(args) != 0:
             print_error("Usage: notifications")
             return True
         
         social.display_notifications()
+
+
+    elif command == "alias":
+        if not auth.is_logged():
+            print_warning("You must be logged in to manage command aliases.")
+            return True
+        
+        user = auth.get_current_user()
+        
+        if len(args) == 0:
+            aliases = db.get_user_aliases(user["id"])
+
+            if aliases:
+                print("\nYour Command Aliases:")
+                for alias, command in aliases.items():
+                    print(f"    - {alias} -> {command}")
+                
+                print()
+
+            else:
+                print_info("You have no command aliases set.")
+
+        elif len(args) == 1:
+            alias = args[0]
+
+            alll = db.get_user_aliases(user["id"])
+
+            if alias in db.get_user_aliases(user["id"]):
+                print(f"    - {alias} -> {alll[alias]}")
+            else:
+                print_info(f"No alias found for '{alias}'.")
+
+        elif len(args) == 2:
+            alias = args[0]
+            command_alias = " ".join(args[1:])
+
+            success, message = db.create_alias(user["id"], alias, command_alias)
+            
+            if success:
+                print_success(message)
+            else:
+                print_error(message)
+        
+        else:
+            print_error("Usage: alias [<alias> [<command>]]")
+
+    
+    elif command == "unalias":
+        if not auth.is_logged():
+            print_warning("You must be logged in to manage command aliases.")
+            return True
+        
+        if len(args) != 1:
+            print_error("Usage: unalias <alias>")
+            return True
+        
+        alias = args[0]
+        user = auth.get_current_user()
+
+        success, message = db.remove_alias(user["id"], alias)
+
+        if success:
+            print_success(message)
+        else:
+            print_error(message)
 
 
     # Admin commands

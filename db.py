@@ -109,6 +109,16 @@ def init_db():
                    "FOREIGN KEY (hashtag_id) REFERENCES hashtags(id)," \
                    "UNIQUE(post_id, hashtag_id))")
     
+    # mentions table
+    cursor.execute("CREATE TABLE IF NOT EXISTS mentions (" \
+                   "id INTEGER PRIMARY KEY AUTOINCREMENT," \
+                   "post_id INTEGER NOT NULL," \
+                   "mentioned_user INTEGER NOT NULL," \
+                   "created INTEGER NOT NULL," \
+                   "FOREIGN KEY (post_id) REFERENCES posts(id)," \
+                   "FOREIGN KEY (mentioned_user) REFERENCES users(id)," \
+                   "UNIQUE(post_id, mentioned_user))")
+    
     # likes
     cursor.execute("CREATE TABLE IF NOT EXISTS likes (" \
                    "id INTEGER PRIMARY KEY AUTOINCREMENT," \
@@ -181,6 +191,16 @@ def init_db():
                    "created INTEGER NOT NULL," \
                    "FOREIGN KEY (admin_id) REFERENCES users(id)," \
                    "FOREIGN KEY (target_user_id) REFERENCES users(id))")
+    
+    # Aliases table
+    cursor.execute("CREATE TABLE IF NOT EXISTS command_aliases (" \
+                   "id INTEGER PRIMARY KEY AUTOINCREMENT," \
+                   "user_id INTEGER NOT NULL," \
+                   "alias TEXT NOT NULL," \
+                   "command TEXT NOT NULL," \
+                   "created INTEGER NOT NULL," \
+                   "FOREIGN KEY (user_id) REFERENCES users(id)," \
+                   "UNIQUE(user_id, alias))")
 
 
     connection.commit()
@@ -693,6 +713,44 @@ def search_hashtags(hashtag, limit, offset):
 
     return results
 
+def mention_detection(post_id, content, user_id):
+    connection = connect_db()
+    cursor = connection.cursor()
+
+    mentions = re.findall(r"@(\w+)", content)
+
+    mentioned = []
+
+    for username in mentions:
+        user = get_user_by_username(username)
+        if user and user["id"] != user_id:
+            now_timestamp = timestamp()
+
+            cursor.execute("INSERT OR IGNORE INTO mentions (post_id, mentioned_user, created) VALUES (?, ?, ?)", (post_id, user["id"], now_timestamp))
+            connection.commit()
+            
+            mentioned.append(user)
+
+            create_notification(user["id"], "mention", f"User @{get_user_by_id(user_id)['username']} mentioned you in their #{post_id} post.")
+
+    return mentioned
+
+def get_posts_mentioning_username(user_id, limit=10, offset=0):
+    connection = connect_db()
+    cursor = connection.cursor()
+
+    cursor.execute("SELECT posts.*, users.username,"
+    "(SELECT COUNT(*) FROM likes WHERE likes.post_id = posts.id) AS like_count," \
+    "(SELECT COUNT(*) FROM comments WHERE comments.post_id = posts.id) AS comment_count," \
+    "(SELECT COUNT(*) FROM reposts WHERE reposts.post_id = posts.id and reposts.is_deleted = 0) AS repost_count " \
+    "FROM mentions JOIN posts ON mentions.post_id = posts.id JOIN users ON posts.user_id = users.id WHERE mentions.mentioned_user = ? AND posts.deleted = 0 ORDER BY posts.created DESC LIMIT ? OFFSET ?", (user_id, limit, offset))
+
+    results = []
+    for row in cursor.fetchall():
+        results.append(dict(row))
+    
+    return results
+
 def follow_user(current_user_id, target_user_id):
     if current_user_id == target_user_id:
         return False, "You cannot follow yourself."
@@ -930,7 +988,39 @@ def get_reposts(post_id):
         results.append(dict(row))
     
     return results
+
+def search_posts(query, limit=10, offset=0):
+    connection = connect_db()
+    cursor = connection.cursor()
+
+    search_query = f"%{query.lower()}%"
+
+    cursor.execute("SELECT posts.*, users.username," \
+                   "(SELECT COUNT(*) FROM likes WHERE likes.post_id = posts.id) AS like_count," \
+                   "(SELECT COUNT(*) FROM comments WHERE comments.post_id = posts.id) AS comment_count," \
+                   "(SELECT COUNT(*) FROM reposts WHERE reposts.post_id = posts.id and reposts.is_deleted = 0) AS repost_count " \
+                   "FROM posts JOIN users ON posts.user_id = users.id WHERE LOWER(posts.content) LIKE ? AND posts.deleted = 0 ORDER BY posts.created DESC LIMIT ? OFFSET ?", (search_query, limit, offset))
     
+    results = []
+    for row in cursor.fetchall():
+        results.append(dict(row))
+    
+    return results
+
+def search_users(query, limit=10, offset=0):
+    connection = connect_db()
+    cursor = connection.cursor()
+
+    search_query = f"%{query.lower()}%"
+
+    cursor.execute("SELECT * FROM users WHERE LOWER(username) LIKE ? AND is_banned = 0 ORDER BY username ASC LIMIT ? OFFSET ?", (search_query, limit, offset))
+
+    results = []
+    for row in cursor.fetchall():
+        results.append(dict(row))
+
+    return results
+
 def send_message(sender_id, receiver_id, content):
     connection = connect_db()
     cursor = connection.cursor()
@@ -1101,6 +1191,54 @@ def clear_notifications(user_id):
     except Exception as e:
         print(f"Error: {e}")
         return False
+    
+def create_alias(user_id, alias, command):
+    connection = connect_db()
+    cursor = connection.cursor()
+
+    now_timestamp = timestamp()
+
+    try:
+        cursor.execute("SELECT id FROM command_aliases WHERE user_id = ? AND alias = ?", (user_id, alias))
+
+        if cursor.fetchone() is not None:
+            cursor.execute("UPDATE command_aliases SET command = ?, created = ? WHERE user_id = ? AND alias = ?", (command, now_timestamp, user_id, alias))
+            connection.commit()
+
+            return True, f"Alias '{alias}' updated."
+        
+        else:
+            cursor.execute("INSERT INTO command_aliases (user_id, alias, command, created) VALUES (?, ?, ?, ?)", (user_id, alias, command, now_timestamp))
+            connection.commit()
+
+            return True, f"Alias '{alias}' created."
+        
+    except Exception as e:
+        return False, f"Error: {e}"
+    
+def get_user_aliases(user_id):
+    connection = connect_db()
+    cursor = connection.cursor()
+
+    cursor.execute("SELECT * FROM command_aliases WHERE user_id = ? ORDER BY created DESC", (user_id,))
+
+    results = {}
+    for row in cursor.fetchall():
+        results[row["alias"]] = row["command"]
+    
+    return results
+
+def remove_alias(user_id, alias):
+    connection = connect_db()
+    cursor = connection.cursor()
+
+    try:
+        cursor.execute("DELETE FROM command_aliases WHERE user_id = ? AND alias = ?", (user_id, alias))
+        connection.commit()
+        return True, f"Alias '{alias}' removed"
+    
+    except Exception as e:
+        return False , f"Error: {e}"
 
 def update_user(user_id, **kwargs):
     connection = connect_db()

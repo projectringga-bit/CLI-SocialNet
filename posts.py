@@ -35,6 +35,7 @@ def create_post(content, image_path=None, image_url=None):
     if success:
         post_id = result
         db.hashtag_detection(post_id, content)
+        db.mention_detection(post_id, content, user["id"])
 
         return True, f"Post created! ID: {result}"
     
@@ -353,6 +354,18 @@ def search_hashtags(hashtag, page=1):
     return True, hashtags
 
 
+def get_mentions(username, page=1):
+    offset = (page - 1) * 10
+
+    user = db.get_user_by_username(username)
+    if user is None:
+        return False, "User not found."
+
+    posts = db.get_posts_mentioning_username(user["id"], limit=10, offset=offset)
+
+    return True, posts
+
+
 def like_post(post_id):
     if not auth.is_logged():
         return False, "You must be logged in."
@@ -452,3 +465,11 @@ def get_post_comments(post_id, limit=50):
     comments = db.get_comments_by_post(post_id, limit=limit)
 
     return True, comments
+
+
+def search_posts(query, page=1):
+    offset = (page - 1) * 10
+
+    posts = db.search_posts(query, limit=10, offset=offset)
+
+    return True, posts
