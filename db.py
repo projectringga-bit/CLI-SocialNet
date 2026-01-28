@@ -42,7 +42,16 @@ def init_db():
                     "is_banned INTEGER DEFAULT 0," \
                     "ban_reason TEXT DEFAULT '', " \
                     "is_private INTEGER DEFAULT 0," \
-                    "is_verified INTEGER DEFAULT 0)")
+                    "is_verified INTEGER DEFAULT 0," \
+                    "login_attempts INTEGER DEFAULT 0," \
+                    "locked_until INTEGER DEFAULT 0)" )
+    
+    # Limit registrations
+    cursor.execute("CREATE TABLE IF NOT EXISTS registration_limits ("
+                   "id INTEGER PRIMARY KEY AUTOINCREMENT," \
+                   "machine_id TEXT NOT NULL," \
+                   "username TEXT, " \
+                   "created INTEGER NOT NULL)" )
     
     # sessions
     cursor.execute("CREATE TABLE IF NOT EXISTS sessions (" \
@@ -210,21 +219,62 @@ def init_db():
     return True
 
 
-def create_user(username, password): #TODO: limit or email verification
+def can_view_content(viewer_id, content_owner_id):
     connection = connect_db()
     cursor = connection.cursor()
+    
+    if viewer_id == content_owner_id:
+        return True
+    
+    cursor.execute("SELECT is_private FROM users WHERE id = ?", (content_owner_id,))
+    row1 = cursor.fetchone()
+
+    if row1 is None:
+        return False
+    
+    if row1["is_private"] == 0:
+        return True
+    
+    cursor.execute("SELECT id FROM follows WHERE follower_id = ? AND followed_id = ?", (viewer_id, content_owner_id))
+    viewer_follows_the_owner = cursor.fetchone()
+
+    cursor.execute("SELECT id FROM follows WHERE follower_id = ? AND followed_id = ?", (content_owner_id, viewer_id))
+    owner_follows_the_viewer = cursor.fetchone()
+
+    if viewer_follows_the_owner and owner_follows_the_viewer:
+        return True
+    
+    return False
+
+
+def create_user(username, password, machine_id=None):
+    connection = connect_db()
+    cursor = connection.cursor()
+
+    now_timestamp = timestamp()
+
+    if machine_id is not None:
+        hour = now_timestamp - 3600
+
+        cursor.execute("SELECT COUNT(*) AS count FROM registration_limits WHERE machine_id = ? AND created > ?", (machine_id, hour))
+        row = cursor.fetchone()
+        if row["count"] >= 3:
+            return False, "Registration limit exceeded for this machine. Please try again later."
 
     cursor.execute("SELECT id FROM users WHERE username = ?", (username.lower(),))
     if cursor.fetchone() is not None:
         return False, "Username is already taken."
     
     password_hash, password_salt = hash_password(password)
-
-    now_timestamp = timestamp()
     
     try:
         cursor.execute("INSERT INTO users (username, password_hash, password_salt, created) VALUES (?, ?, ?, ?)", (username.lower(), password_hash, password_salt, now_timestamp))
         connection.commit()
+
+        if machine_id is not None:
+            cursor.execute("INSERT INTO registration_limits (machine_id, username, created) VALUES (?, ?, ?)", (machine_id, username.lower(), now_timestamp))
+            connection.commit()
+
         return True, "User created successfully."
 
     except Exception as e:
@@ -371,7 +421,7 @@ def create_post(user_id, content, image_ascii=None):
         print(f"Error: {e}")
         return False, f"Error: {e}"
     
-def get_post(post_id):
+def get_post(post_id, viewer_id=None):
     connection = connect_db()
     cursor = connection.cursor()
 
@@ -379,6 +429,12 @@ def get_post(post_id):
     row = cursor.fetchone()
     if row is None:
         return None
+    
+    post = dict(row)
+
+    if viewer_id is not None:
+        if not can_view_content(viewer_id, post["user_id"]):
+            return None
     
     return dict(row)
 
@@ -399,7 +455,11 @@ def get_feed_posts(user_id, limit=10, offset=0):
     connection = connect_db()
     cursor = connection.cursor()
 
-    cursor.execute("SELECT posts.*, users.username, (SELECT COUNT(*) FROM likes WHERE likes.post_id = posts.id) AS like_count, (SELECT COUNT(*) FROM comments WHERE comments.post_id = posts.id) AS comment_count, (SELECT COUNT(*) FROM reposts WHERE reposts.post_id = posts.id and reposts.is_deleted = 0) AS repost_count FROM posts JOIN users ON posts.user_id = users.id WHERE posts.deleted = 0 AND (posts.user_id = ? OR posts.user_id IN (SELECT followed_id FROM follows WHERE follower_id = ?)) ORDER BY posts.created DESC LIMIT ? OFFSET ?", (user_id, user_id, limit, offset))
+    cursor.execute("SELECT posts.*, users.username," \
+                   "(SELECT COUNT(*) FROM likes WHERE likes.post_id = posts.id) AS like_count," \
+                   "(SELECT COUNT(*) FROM comments WHERE comments.post_id = posts.id) AS comment_count," \
+                   "(SELECT COUNT(*) FROM reposts WHERE reposts.post_id = posts.id and reposts.is_deleted = 0) AS repost_count " \
+                   "FROM posts JOIN users ON posts.user_id = users.id WHERE posts.deleted = 0 AND (posts.user_id = ? OR (posts.user_id IN (SELECT followed_id FROM follows WHERE follower_id = ?) AND (users.is_private = 0 OR EXISTS (SELECT 1 FROM follows WHERE follower_id = posts.user_id AND followed_id = ?)))) ORDER BY posts.created DESC LIMIT ? OFFSET ?", (user_id, user_id, user_id, limit, offset))
     results = []
     for row in cursor.fetchall():
         results.append(dict(row))
@@ -407,11 +467,22 @@ def get_feed_posts(user_id, limit=10, offset=0):
     return results
 
 
-def get_global_feed_posts(limit=10, offset=0):
+def get_global_feed_posts(limit=10, offset=0, viewer_id=None):
     connection = connect_db()
     cursor = connection.cursor()
 
-    cursor.execute("SELECT posts.*, users.username, (SELECT COUNT(*) FROM likes WHERE likes.post_id = posts.id) AS like_count, (SELECT COUNT(*) FROM comments WHERE comments.post_id = posts.id) AS comment_count, (SELECT COUNT(*) FROM reposts WHERE reposts.post_id = posts.id and reposts.is_deleted = 0) AS repost_count FROM posts JOIN users ON posts.user_id = users.id WHERE posts.deleted = 0 ORDER BY posts.created DESC LIMIT ? OFFSET ?", (limit, offset))
+    if viewer_id is None:
+        cursor.execute("SELECT posts.*, users.username," \
+                       "(SELECT COUNT(*) FROM likes WHERE likes.post_id = posts.id) AS like_count," \
+                       "(SELECT COUNT(*) FROM comments WHERE comments.post_id = posts.id) AS comment_count," \
+                       "(SELECT COUNT(*) FROM reposts WHERE reposts.post_id = posts.id and reposts.is_deleted = 0) AS repost_count " \
+                       "FROM posts JOIN users ON posts.user_id = users.id WHERE posts.deleted = 0 AND users.is_private = 0 ORDER BY posts.created DESC LIMIT ? OFFSET ?", (limit, offset))
+    else:
+        cursor.execute("SELECT posts.*, users.username," \
+                       "(SELECT COUNT(*) FROM likes WHERE likes.post_id = posts.id) AS like_count," \
+                       "(SELECT COUNT(*) FROM comments WHERE comments.post_id = posts.id) AS comment_count," \
+                       "(SELECT COUNT(*) FROM reposts WHERE reposts.post_id = posts.id and reposts.is_deleted = 0) AS repost_count " \
+                       "FROM posts JOIN users ON posts.user_id = users.id WHERE posts.deleted = 0 AND (users.is_private = 0 OR (EXISTS (SELECT 1 FROM follows WHERE follower_id = ? AND followed_id = users.id) AND EXISTS (SELECT 1 FROM follows WHERE follower_id = users.id AND followed_id = ?))) ORDER BY posts.created DESC LIMIT ? OFFSET ?", (viewer_id, viewer_id, limit, offset))
     results = []
     for row in cursor.fetchall():
         results.append(dict(row))
@@ -419,9 +490,13 @@ def get_global_feed_posts(limit=10, offset=0):
     return results
 
 
-def get_posts_by_id(user_id, limit=10, offset=0):
+def get_posts_by_id(user_id, limit=10, offset=0, viewer_id=None):
     connection = connect_db()
     cursor = connection.cursor()
+
+    if viewer_id is not None:
+        if not can_view_content(viewer_id, user_id):
+            return []
 
     cursor.execute("""
     SELECT posts.*, users.username,
@@ -468,6 +543,10 @@ def get_post_owner(post_id):
 def like_post(user_id, post_id):
     connection = connect_db()
     cursor = connection.cursor()
+
+    owner = get_post_owner(post_id)
+    if not can_view_content(user_id, owner):
+        return False, "You cannot like this post."
 
     cursor.execute("SELECT id FROM likes WHERE user_id = ? AND post_id = ?", (user_id, post_id))
     if cursor.fetchone() is not None:
@@ -534,6 +613,10 @@ def get_posts_count(user_id):
 def create_bookmark(user_id, post_id):
     connection = connect_db()
     cursor = connection.cursor()
+
+    owner = get_post_owner(post_id)
+    if not can_view_content(user_id, owner):
+        return False, "You cannot bookmark this post."
 
     cursor.execute("SELECT id FROM bookmarks WHERE user_id = ? AND post_id = ?", (user_id, post_id))
     if cursor.fetchone() is not None:
@@ -624,9 +707,13 @@ def unpin_post(user_id, post_id):
         print(f"Error: {e}")
         return False, f"Error: {e}"
     
-def get_pinned_posts(user_id):
+def get_pinned_posts(user_id, viewer_id=None):
     connection = connect_db()
     cursor = connection.cursor()
+
+    if viewer_id is not None:
+        if not can_view_content(viewer_id, user_id):
+            return []
 
     cursor.execute("SELECT posts.*, users.username, (SELECT COUNT(*) FROM likes WHERE likes.post_id = posts.id) AS like_count, (SELECT COUNT(*) FROM reposts WHERE reposts.post_id = posts.id AND reposts.is_deleted = 0) AS repost_count FROM pinned_posts JOIN posts ON pinned_posts.post_id = posts.id JOIN users ON posts.user_id = users.id WHERE pinned_posts.user_id = ? AND posts.deleted = 0 ORDER BY pinned_posts.created DESC", (user_id,))
     
@@ -669,17 +756,25 @@ def hashtag_detection(post_id, content):
         return hashtags
 
 
-def get_posts_using_hashtag(hashtag, limit=10, offset=0):
+def get_posts_using_hashtag(hashtag, limit=10, offset=0, viewer_id=None):
     connection = connect_db()
     cursor = connection.cursor()
 
     hashtag_lower = hashtag.lower().strip().lstrip("#")
+    
+    if viewer_id is None:
+        cursor.execute("SELECT posts.*, users.username," \
+                       "(SELECT COUNT(*) FROM likes WHERE likes.post_id = posts.id) AS like_count," \
+                       "(SELECT COUNT(*) FROM comments WHERE comments.post_id = posts.id) AS comment_count," \
+                       "(SELECT COUNT(*) FROM reposts WHERE reposts.post_id = posts.id and reposts.is_deleted = 0) AS repost_count " \
+                       "FROM posts JOIN users ON posts.user_id = users.id JOIN post_hashtags ON posts.id = post_hashtags.post_id JOIN hashtags ON post_hashtags.hashtag_id = hashtags.id WHERE hashtags.hashtag = ? AND posts.deleted = 0 AND users.is_banned = 0 AND users.is_private = 0 ORDER BY posts.created DESC LIMIT ? OFFSET ?", (hashtag_lower, limit, offset))
 
-    cursor.execute("SELECT posts.*, users.username,"
-    "(SELECT COUNT(*) FROM likes WHERE likes.post_id = posts.id) AS like_count,"
-    "(SELECT COUNT(*) FROM comments WHERE comments.post_id = posts.id) AS comment_count,"
-    "(SELECT COUNT(*) FROM reposts WHERE reposts.post_id = posts.id and reposts.is_deleted = 0) AS repost_count " \
-    "FROM posts JOIN users ON posts.user_id = users.id JOIN post_hashtags ON posts.id = post_hashtags.post_id JOIN hashtags ON post_hashtags.hashtag_id = hashtags.id WHERE hashtags.hashtag = ? AND posts.deleted = 0 AND users.is_banned = 0 ORDER BY posts.created DESC LIMIT ? OFFSET ?", (hashtag_lower, limit, offset))
+    else:
+        cursor.execute("SELECT posts.*, users.username," \
+                       "(SELECT COUNT(*) FROM likes WHERE likes.post_id = posts.id) AS like_count," \
+                       "(SELECT COUNT(*) FROM comments WHERE comments.post_id = posts.id) AS comment_count," \
+                       "(SELECT COUNT(*) FROM reposts WHERE reposts.post_id = posts.id and reposts.is_deleted = 0) AS repost_count " \
+                       "FROM posts JOIN users ON posts.user_id = users.id JOIN post_hashtags ON posts.id = post_hashtags.post_id JOIN hashtags ON post_hashtags.hashtag_id = hashtags.id WHERE hashtags.hashtag = ? AND posts.deleted = 0 AND users.is_banned = 0 AND (users.is_private = 0 OR (EXISTS (SELECT 1 FROM follows WHERE follower_id = ? AND followed_id = users.id) AND EXISTS (SELECT 1 FROM follows WHERE follower_id = users.id AND followed_id = ?))) ORDER BY posts.created DESC LIMIT ? OFFSET ?", (hashtag_lower, viewer_id, viewer_id, limit, offset))
     
     results = []
     for row in cursor.fetchall():
@@ -735,15 +830,22 @@ def mention_detection(post_id, content, user_id):
 
     return mentioned
 
-def get_posts_mentioning_username(user_id, limit=10, offset=0):
+def get_posts_mentioning_username(user_id, limit=10, offset=0, viewer_id=None):
     connection = connect_db()
     cursor = connection.cursor()
 
-    cursor.execute("SELECT posts.*, users.username,"
-    "(SELECT COUNT(*) FROM likes WHERE likes.post_id = posts.id) AS like_count," \
-    "(SELECT COUNT(*) FROM comments WHERE comments.post_id = posts.id) AS comment_count," \
-    "(SELECT COUNT(*) FROM reposts WHERE reposts.post_id = posts.id and reposts.is_deleted = 0) AS repost_count " \
-    "FROM mentions JOIN posts ON mentions.post_id = posts.id JOIN users ON posts.user_id = users.id WHERE mentions.mentioned_user = ? AND posts.deleted = 0 ORDER BY posts.created DESC LIMIT ? OFFSET ?", (user_id, limit, offset))
+    if viewer_id is None:
+        cursor.execute("SELECT posts.*, users.username," \
+                       "(SELECT COUNT(*) FROM likes WHERE likes.post_id = posts.id) AS like_count," \
+                       "(SELECT COUNT(*) FROM comments WHERE comments.post_id = posts.id) AS comment_count," \
+                       "(SELECT COUNT(*) FROM reposts WHERE reposts.post_id = posts.id and reposts.is_deleted = 0) AS repost_count " \
+                       "FROM mentions JOIN posts ON mentions.post_id = posts.id JOIN users ON posts.user_id = users.id WHERE mentions.mentioned_user = ? AND posts.deleted = 0 AND users.is_private = 0 ORDER BY posts.created DESC LIMIT ? OFFSET ?", (user_id, limit, offset))
+    else:
+        cursor.execute("SELECT posts.*, users.username," \
+                       "(SELECT COUNT(*) FROM likes WHERE likes.post_id = posts.id) AS like_count," \
+                       "(SELECT COUNT(*) FROM comments WHERE comments.post_id = posts.id) AS comment_count," \
+                       "(SELECT COUNT(*) FROM reposts WHERE reposts.post_id = posts.id and reposts.is_deleted = 0) AS repost_count " \
+                       "FROM mentions JOIN posts ON mentions.post_id = posts.id JOIN users ON posts.user_id = users.id WHERE mentions.mentioned_user = ? AND posts.deleted = 0 AND (users.is_private = 0 OR (EXISTS (SELECT 1 FROM follows WHERE follower_id = ? AND followed_id = users.id) AND EXISTS (SELECT 1 FROM follows WHERE follower_id = users.id AND followed_id = ?))) ORDER BY posts.created DESC LIMIT ? OFFSET ?", (user_id, viewer_id, viewer_id, limit, offset))
 
     results = []
     for row in cursor.fetchall():
@@ -807,9 +909,13 @@ def get_followers(user_id):
 
     return results
 
-def get_following(user_id):
+def get_following(user_id, viewer_id=None):
     connection = connect_db()
     cursor = connection.cursor()
+
+    if viewer_id is not None:
+        if not can_view_content(viewer_id, user_id):
+            return []
 
     cursor.execute("SELECT users.id, users.username FROM follows JOIN users ON follows.followed_id = users.id WHERE follows.follower_id = ? ORDER BY follows.created DESC", (user_id,))
     
@@ -830,9 +936,13 @@ def get_followers_count(user_id):
     
     return row["count"]
 
-def get_following_count(user_id):
+def get_following_count(user_id, viewer_id=None):
     connection = connect_db()
     cursor = connection.cursor()
+
+    if viewer_id is not None:
+        if not can_view_content(viewer_id, user_id):
+            return 0
 
     cursor.execute("SELECT COUNT(*) AS count FROM follows WHERE follower_id = ?", (user_id,))
     row = cursor.fetchone()
@@ -855,6 +965,10 @@ def is_following(follower_id, followed_id):
 def create_comment(user_id, post_id, content):
     connection = connect_db()
     cursor = connection.cursor()
+    
+    owner = get_post_owner(post_id)
+    if not can_view_content(user_id, owner):
+        return False, "You cannot comment on this post."
 
     now_timestamp = timestamp()
 
@@ -872,9 +986,14 @@ def create_comment(user_id, post_id, content):
     except Exception as e:
         return False, f"Error: {e}"
     
-def get_comments_by_post(post_id, limit):
+def get_comments_by_post(post_id, limit, viewer_id=None):
     connection = connect_db()
     cursor = connection.cursor()
+
+    if viewer_id is not None:
+        owner = get_post_owner(post_id)
+        if not can_view_content(viewer_id, owner):
+            return []
 
     cursor.execute("SELECT comments.*, users.username FROM comments JOIN users ON comments.user_id = users.id WHERE comments.post_id = ? AND comments.deleted = 0 ORDER BY comments.created DESC LIMIT ?", (post_id, limit))
 
@@ -924,6 +1043,10 @@ def delete_comment(comment_id):
 def create_repost(user_id, post_id, content=None):
     connection = connect_db()
     cursor = connection.cursor()
+
+    owner = get_post_owner(post_id)
+    if not can_view_content(user_id, owner):
+        return False, "You cannot repost this post."
 
     cursor.execute("SELECT id FROM reposts WHERE user_id = ? AND post_id = ? AND is_deleted = 0", (user_id, post_id))
         
@@ -977,9 +1100,14 @@ def get_reposts_count(post_id):
     
     return row["count"]
 
-def get_reposts(post_id):
+def get_reposts(post_id, viewer_id=None):
     connection = connect_db()
     cursor = connection.cursor()
+
+    if viewer_id is not None:
+        owner = get_post_owner(post_id)
+        if not can_view_content(viewer_id, owner):
+            return []
 
     cursor.execute("SELECT reposts.*, users.username FROM reposts JOIN users ON reposts.user_id = users.id WHERE reposts.post_id = ? AND reposts.is_deleted = 0 ORDER BY reposts.created DESC", (post_id,))
 
@@ -989,18 +1117,25 @@ def get_reposts(post_id):
     
     return results
 
-def search_posts(query, limit=10, offset=0):
+def search_posts(query, limit=10, offset=0, viewer_id=None):
     connection = connect_db()
     cursor = connection.cursor()
 
     search_query = f"%{query.lower()}%"
 
-    cursor.execute("SELECT posts.*, users.username," \
-                   "(SELECT COUNT(*) FROM likes WHERE likes.post_id = posts.id) AS like_count," \
-                   "(SELECT COUNT(*) FROM comments WHERE comments.post_id = posts.id) AS comment_count," \
-                   "(SELECT COUNT(*) FROM reposts WHERE reposts.post_id = posts.id and reposts.is_deleted = 0) AS repost_count " \
-                   "FROM posts JOIN users ON posts.user_id = users.id WHERE LOWER(posts.content) LIKE ? AND posts.deleted = 0 ORDER BY posts.created DESC LIMIT ? OFFSET ?", (search_query, limit, offset))
-    
+    if viewer_id is None:
+        cursor.execute("SELECT posts.*, users.username," \
+                       "(SELECT COUNT(*) FROM likes WHERE likes.post_id = posts.id) AS like_count," \
+                       "(SELECT COUNT(*) FROM comments WHERE comments.post_id = posts.id) AS comment_count," \
+                       "(SELECT COUNT(*) FROM reposts WHERE reposts.post_id = posts.id and reposts.is_deleted = 0) AS repost_count " \
+                       "FROM posts JOIN users ON posts.user_id = users.id WHERE LOWER(posts.content) LIKE ? AND posts.deleted = 0 AND users.is_private = 0 ORDER BY posts.created DESC LIMIT ? OFFSET ?", (search_query, limit, offset))
+    else:
+        cursor.execute("SELECT posts.*, users.username," \
+                       "(SELECT COUNT(*) FROM likes WHERE likes.post_id = posts.id) AS like_count," \
+                       "(SELECT COUNT(*) FROM comments WHERE comments.post_id = posts.id) AS comment_count," \
+                       "(SELECT COUNT(*) FROM reposts WHERE reposts.post_id = posts.id and reposts.is_deleted = 0) AS repost_count " \
+                       "FROM posts JOIN users ON posts.user_id = users.id WHERE LOWER(posts.content) LIKE ? AND posts.deleted = 0 AND (users.is_private = 0 OR (EXISTS (SELECT 1 FROM follows WHERE follower_id = ? AND followed_id = users.id) AND EXISTS (SELECT 1 FROM follows WHERE follower_id = users.id AND followed_id = ?))) ORDER BY posts.created DESC LIMIT ? OFFSET ?", (search_query, viewer_id, viewer_id, limit, offset))
+        
     results = []
     for row in cursor.fetchall():
         results.append(dict(row))
@@ -1244,7 +1379,7 @@ def update_user(user_id, **kwargs):
     connection = connect_db()
     cursor = connection.cursor()
 
-    allowed_fields = ["display_name", "bio", "status", "location", "website", "profile_ascii", "is_banned", "ban_reason", "is_admin", "is_verified", "is_private"]
+    allowed_fields = ["display_name", "bio", "status", "location", "website", "profile_ascii", "is_banned", "ban_reason", "is_admin", "is_verified", "is_private", "login_attempts", "locked_until"]
 
     updates = []
     values = []

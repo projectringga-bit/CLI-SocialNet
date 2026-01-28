@@ -7,6 +7,7 @@ import auth
 import posts
 import social
 import admin
+import ascii
 from utils import print_success, print_error, print_warning, print_info, print_separator, print_banner, print_post, print_comment
 from utils import clear
 
@@ -30,6 +31,8 @@ explore [<page>]                 -> View the global feed
 post <content>                   -> Create a new post
 postimg <image_path> [<caption>] -> Create a new post with an image from a local path
 posturl <image_url> [<caption>]  -> Create a new post with an image from a URL
+postbig <big_content> [<content>]-> Create a new post with big text content
+bigtext <big_content>            -> Preview big text content in ASCII
 viewpost <post_id>               -> View a specific post
 deletepost <post_id>             -> Delete a specific post
 search <query> [<page>]          -> Search for posts
@@ -397,6 +400,36 @@ def execute_command(command, args): # returns True (continue) or False (exit)
             print_success(message)
         else:
             print_error(message)
+
+
+    elif command == "postbig":
+        if not auth.is_logged():
+            print_warning("You must be logged in to create a post.")
+            return True
+        
+        if len(args) == 0:
+            print_error("Usage: postbig <big_content> [<content>]")
+            return True
+        
+        big_content = args[0]
+        content = " ".join(args[1:])
+
+        success, message = posts.create_post_big(big_content, content=content)
+
+        if success:
+            print_success(message)
+        else:
+            print_error(message)
+
+
+    elif command == "bigtext":
+        if len (args) != 1:
+            print_error("Usage: bigtext <big_content>")
+            return True
+        
+        big_content = args[0]
+
+        ascii.preview_text(big_content)
 
 
     elif command == "viewpost":        
@@ -1250,7 +1283,7 @@ def execute_command(command, args): # returns True (continue) or False (exit)
             print_error(message)
 
 
-    elif command == "private": # TODO: private account effect on posts visibility
+    elif command == "private":
         if not auth.is_logged():
             print_warning("You must be logged in to change your privacy settings.")
             return True

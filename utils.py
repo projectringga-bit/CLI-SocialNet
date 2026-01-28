@@ -504,13 +504,13 @@ def print_profile(user, posts=None, pinned=None):
 
     print("╰" + "─" * WIDTH + "╯")
 
-    if user.get("is_following") and user.get("is_follows_you"):
+    if user.get("is_following") and user.get("follows_you"):
         print("  [✔] You and this user follow each other")
         
-    if user.get("is_following"):
+    elif user.get("is_following"):
         print("  [✔] You are following this user")
     
-    if user.get("is_follows_you"):
+    elif user.get("follows_you"):
         print("  [✔] This user is following you")
 
     

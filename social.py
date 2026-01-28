@@ -67,7 +67,12 @@ def get_following(username):
         
         user = auth.get_current_user()
 
-    following = db.get_following(user["id"])
+    viewer_id = None
+    if auth.is_logged():
+        current_user = auth.get_current_user()
+        viewer_id = current_user["id"]
+
+    following = db.get_following(user["id"], viewer_id=viewer_id)
 
     return True, following
 
@@ -85,6 +90,11 @@ def get_profile(username):
     if user is None:
         return None
     
+    viewer_id = None
+    if auth.is_logged():
+        current_user = auth.get_current_user()
+        viewer_id = current_user["id"]
+    
     profile = {
         "id": user["id"],
         "username": user["username"],
@@ -95,10 +105,10 @@ def get_profile(username):
         "website": user["website"] or '',
         "created": user["created"],
         "followers_count": db.get_followers_count(user["id"]),
-        "following_count": db.get_following_count(user["id"]),
+        "following_count": db.get_following_count(user["id"], viewer_id=viewer_id),
         "posts_count": db.get_posts_count(user["id"]),
         "profile_ascii": user["profile_ascii"] or None,
-        "is_admin": user["is_admin"],
+        "is_admin": user["is_admin"],\
         "is_verified": user["is_verified"] or 0,
         "is_private": user["is_private"] or 0
     }
@@ -265,7 +275,7 @@ def display_following(username):
             target = current_user["username"]
     
         if not following:
-            return True, f"@{target} is not following anyone."
+            return False, f"@{target} is not following anyone."
         
         following_list = []
         for user in following:
@@ -283,8 +293,13 @@ def display_profile(username):
     if profile is None:
         return False, "User not found."
     
-    posts = db.get_posts_by_id(profile["id"], limit=15)
-    pinned = db.get_pinned_posts(profile["id"])
+    viewer_id = None
+    if auth.is_logged():
+        current_user = auth.get_current_user()
+        viewer_id = current_user["id"]
+    
+    posts = db.get_posts_by_id(profile["id"], limit=15, viewer_id=viewer_id)
+    pinned = db.get_pinned_posts(profile["id"], viewer_id=viewer_id)
     
     print_profile(profile, posts=posts, pinned=pinned)
 

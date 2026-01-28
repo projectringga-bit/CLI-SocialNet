@@ -1,8 +1,10 @@
-import re
 import hashlib
-import secrets
+import socket
+import uuid
+import platform
 
 import db
+from config import ENABLE_REGISTRATION_LIMIT
 from utils import verify_password, validate_username, validate_password, generate_token, timestamp
 
 
@@ -36,7 +38,25 @@ def register(username, password):
     if not valid:
         return False, error
     
-    success, result = db.create_user(username, password)
+    hostname = socket.gethostname()
+
+    mac_int = uuid.getnode()
+    mac_bytes = mac_int.to_bytes(6, byteorder='big')
+    mac_parts = []
+    for byte in mac_bytes:
+        mac_parts.append(f"{byte:02x}")
+    
+    mac_address = ":".join(mac_parts)
+
+    system = platform.system()
+
+    identifier = f"{hostname}:{mac_address}:{system}"
+    machine_id = hashlib.sha256(identifier.encode()).hexdigest()
+    
+    if ENABLE_REGISTRATION_LIMIT:
+        success, result = db.create_user(username, password, machine_id=machine_id)
+    else:
+        success, result = db.create_user(username, password)
 
     if success:
         return True, result
@@ -56,6 +76,10 @@ def login(username, password):
         return False, f"Your account has been banned. Reason: {reason}"
     
     time = timestamp()
+
+    if user["locked_until"] > time:
+        remain = (user["locked_until"] - time) // 60
+        return False, f"Your account is locked due to multiple failed login attempts. Please try again in {remain} minutes."
     
     if verify_password(password, user["password_hash"], user["password_salt"]):
         token = generate_token()
@@ -65,10 +89,24 @@ def login(username, password):
         current_user = user
         current_token = token
 
+        db.update_user(user["id"], login_attempts=0)
+
         return True, f"Welcome back, @{username}!"
     
     else:
-        return False, "Wrong password."
+        attempts = user["login_attempts"] + 1
+
+        if attempts >= 5:
+            lock_duration = time + 15 * 60 # 15 minutes
+            db.update_user(user["id"], login_attempts=0, locked_until=lock_duration)
+
+            return False, "Too many failed login attempts. Your account has been locked for 15 minutes."
+        
+        else:
+            db.update_user(user["id"], login_attempts=attempts)
+            remaining_attempts = 5 - attempts
+
+            return False, f"Incorrect password. You have {remaining_attempts} more attempt(s)."
 
 
 def logout():
