@@ -459,7 +459,7 @@ def execute_command(command, args): # returns True (continue) or False (exit)
             print_error("Usage: deletepost <post_id>")
             return True
         
-        post_id = args[0]
+        post_id = int(args[0])
 
         success, message = posts.delete_post(post_id)
 
@@ -509,7 +509,7 @@ def execute_command(command, args): # returns True (continue) or False (exit)
             print_error("Usage: repost <post_id>")
             return True
         
-        post_id = args[0]
+        post_id = int(args[0])
 
         success, message = posts.repost(post_id)
 
@@ -528,7 +528,7 @@ def execute_command(command, args): # returns True (continue) or False (exit)
             print_error("Usage: unrepost <post_id>")
             return True
         
-        post_id = args[0]
+        post_id = int(args[0])
 
         success, message = posts.unrepost(post_id)
 
@@ -547,7 +547,7 @@ def execute_command(command, args): # returns True (continue) or False (exit)
             print_error("Usage: quote <post_id> <comment>")
             return True
         
-        post_id = args[0]
+        post_id = int(args[0])
         comment = " ".join(args[1:])
 
         success, message = posts.quote_post(post_id, comment)
@@ -563,7 +563,7 @@ def execute_command(command, args): # returns True (continue) or False (exit)
             print_error("Usage: reposts <post_id>")
             return True
         
-        post_id = args[0]
+        post_id = int(args[0])
 
         success, reposts = posts.get_reposts(post_id)
 
@@ -589,7 +589,7 @@ def execute_command(command, args): # returns True (continue) or False (exit)
             print_error("Usage: pin <post_id>")
             return True
         
-        post_id = args[0]
+        post_id = int(args[0])
 
         success, message = posts.pin_post(post_id)
 
@@ -608,7 +608,7 @@ def execute_command(command, args): # returns True (continue) or False (exit)
             print_error("Usage: unpin <post_id>")
             return True
         
-        post_id = args[0]
+        post_id = int(args[0])
 
         success, message = posts.unpin_post(post_id)
 
@@ -658,7 +658,7 @@ def execute_command(command, args): # returns True (continue) or False (exit)
             print_error("Usage: bookmark <post_id>")
             return True
         
-        post_id = args[0]
+        post_id = int(args[0])
 
         success, message = posts.bookmark_post(post_id)
 
@@ -677,7 +677,7 @@ def execute_command(command, args): # returns True (continue) or False (exit)
             print_error("Usage: unbookmark <post_id>")
             return True
         
-        post_id = args[0]
+        post_id = int(args[0])
 
         success, message = posts.unbookmark_post(post_id)
 
@@ -842,7 +842,7 @@ def execute_command(command, args): # returns True (continue) or False (exit)
             print_error("Usage: like <post_id>")
             return True
         
-        post_id = args[0]
+        post_id = int(args[0])
 
         success, message = posts.like_post(post_id)
 
@@ -861,7 +861,7 @@ def execute_command(command, args): # returns True (continue) or False (exit)
             print_error("Usage: unlike <post_id>")
             return True
         
-        post_id = args[0]
+        post_id = int(args[0])
 
         success, message = posts.unlike_post(post_id)
 
@@ -876,7 +876,7 @@ def execute_command(command, args): # returns True (continue) or False (exit)
             print_error("Usage: likes <post_id>")
             return True
         
-        post_id = args[0]
+        post_id = int(args[0])
 
         likes, error = posts.get_likes(post_id)
 
@@ -902,7 +902,7 @@ def execute_command(command, args): # returns True (continue) or False (exit)
             print_error("Usage: comment <post_id> <comment_text>")
             return True
         
-        post_id = args[0]
+        post_id = int(args[0])
 
         text = " ".join(args[1:])
 
@@ -923,7 +923,7 @@ def execute_command(command, args): # returns True (continue) or False (exit)
             print_error("Usage: delcomment <comment_id>")
             return True
         
-        comment_id = args[0]
+        comment_id = int(args[0])
 
         success, message = posts.delete_comment(comment_id)
 
@@ -938,7 +938,7 @@ def execute_command(command, args): # returns True (continue) or False (exit)
             print_error("Usage: comments <post_id>")
             return True
         
-        post_id = args[0]
+        post_id = int(args[0])
 
         success, comments = posts.get_post_comments(post_id)
         if not success:
@@ -1500,7 +1500,7 @@ def execute_command(command, args): # returns True (continue) or False (exit)
                 print_error("Usage: admin deletepost <post_id>")
                 return True
             
-            post_id = args[0]
+            post_id = int(args[0])
 
             success, message = admin.delete_post(post_id)
 
