@@ -1,5 +1,5 @@
 from pymongo import MongoClient
-from pymongo import DESCENDING
+from pymongo import DESCENDING, ASCENDING
 from pymongo import ReturnDocument
 import re
 
@@ -46,6 +46,7 @@ def init_db():
     posts = db["posts"]
     posts.create_index("user_id")
     posts.create_index("created")
+    posts.create_index([("deleted", ASCENDING), ("created", DESCENDING)])
 
     reposts = db["reposts"]
     reposts.create_index("user_id")
@@ -71,10 +72,10 @@ def init_db():
     mentions.create_index("mentioned_user", unique=True)
 
     likes = db["likes"]
-    likes.create_index([("user_id", 1), ("post_id", 1)], unique=True)
+    likes.create_index([("user_id", ASCENDING), ("post_id", ASCENDING)], unique=True)
 
     follows = db["follows"]
-    follows.create_index([("follower_id", 1), ("followed_id", 1)], unique=True)
+    follows.create_index([("follower_id", ASCENDING), ("followed_id", ASCENDING)], unique=True)
 
     comments = db["comments"]
     comments.create_index("user_id")
@@ -83,20 +84,23 @@ def init_db():
     messages = db["messages"]
     messages.create_index("sender_id")
     messages.create_index("receiver_id")
+    messages.create_index([("receiver_id", ASCENDING), ("is_read", ASCENDING)])
 
     closed_conversations = db["closed_conversations"]
-    closed_conversations.create_index("user_id", unique=True)
-    closed_conversations.create_index("other_user_id", unique=True)
+    closed_conversations.create_index([("user_id", ASCENDING), ("other_user_id", ASCENDING)], unique=True)
 
     notifications = db["notifications"]
     notifications.create_index("user_id")
+    notifications.create_index([("user_id", ASCENDING), ("is_read", ASCENDING)])
     
     admin_logs = db["admin_logs"]
     admin_logs.create_index("admin_id")
     admin_logs.create_index("target_user_id")
 
     command_aliases = db["command_aliases"]
-    command_aliases.create_index([("user_id", 1), ("alias", 1)], unique=True)
+    command_aliases.create_index([("user_id", ASCENDING), ("alias", ASCENDING)], unique=True)
+
+    create_admin()
 
     return True
 
@@ -1147,6 +1151,147 @@ def search_users(query, limit=10, offset=0):
 
     return results
 
+def send_message(sender_id, receiver_id, content):
+    db = connect_db()
+    messages = db["messages"]
+
+    now_timestamp = timestamp()
+
+    try:
+        result = messages.insert_one({
+            "sender_id": sender_id,
+            "receiver_id": receiver_id,
+            "content": content,
+            "is_read": 0,
+            "created": now_timestamp
+        })
+
+        reopen_conversation(receiver_id, sender_id)
+        reopen_conversation(sender_id, receiver_id)
+
+        sender = get_user_by_id(sender_id)
+        create_notification(receiver_id, "message", f"New message from @{sender['username']}")
+
+        return True, result.inserted_id
+    
+    except Exception as e:
+        return False, f"Error: {e}"
+    
+def get_messages(user_id, other_id, limit=20):
+    db = connect_db()
+    messages = db["messages"]
+    users = db["users"]
+
+    results = []
+
+    cursor = messages.find({
+        "$or": [
+            {"sender_id": user_id, "receiver_id": other_id},
+            {"sender_id": other_id, "receiver_id": user_id}
+        ]
+    }).sort("created", ASCENDING).limit(limit)
+
+    for message in cursor:
+        sender = users.find_one({"_id": message["sender_id"]})
+        receiver = users.find_one({"_id": message["receiver_id"]})
+
+        if sender:
+            message["sender_username"] = sender["username"]
+        if receiver:
+            message["receiver_username"] = receiver["username"]
+
+        message["id"] = message["_id"]
+
+        results.append(dict(message))
+
+    return results
+
+def get_conversations(user_id):
+    db = connect_db()
+    messages = db["messages"]
+    closed_conversations = db["closed_conversations"]
+
+    results = []
+
+    cursor = messages.aggregate([
+        {"$match": {
+            "$or": [
+                {"sender_id": user_id},
+                {"receiver_id": user_id}
+            ]
+        }},
+        {"$sort": {"created": -1}},
+        {"$group": {
+            "_id": {
+                "$cond": [
+                    {"$eq": ["$sender_id", user_id]},
+                    "$receiver_id",
+                    "$sender_id"
+                ]
+            },
+            "last_message": {"$first": "$content"},
+            "timestamp": {"$first": "$created"},
+        }}
+    ])
+
+    for conversation in cursor:
+        other_id = conversation["_id"]
+
+        is_closed = closed_conversations.find_one({
+            "user_id": user_id,
+            "other_user_id": other_id
+        })
+        if not is_closed:
+            user = get_user_by_id(other_id)
+            if user:
+                results.append({
+                    "user_id": other_id,
+                    "username": user["username"],
+                    "last_message": conversation["last_message"],
+                    "timestamp": conversation["timestamp"]
+                })
+
+    return results
+
+def close_conversation(user_id, other_id):
+    db = connect_db()
+    closed_conversations = db["closed_conversations"]
+
+    now_timestamp = timestamp()
+
+    try:
+        existing = closed_conversations.find_one({
+            "user_id": user_id,
+            "other_user_id": other_id
+        })
+        if existing is not None:
+            return False, "Conversation is already closed."
+        
+        result = closed_conversations.insert_one({
+            "user_id": user_id,
+            "other_user_id": other_id,
+            "created": now_timestamp
+        })
+        return True, result.inserted_id
+    
+    except Exception as e:
+        return False, f"Error: {e}"
+    
+def reopen_conversation(user_id, other_id):
+    db = connect_db()
+    closed_conversations = db["closed_conversations"]
+
+    try:
+        closed_conversations.delete_one({
+            "user_id": user_id,
+            "other_user_id": other_id
+        })
+        return True
+    
+    except Exception as e:
+        print(f"Error: {e}")
+        return False
+
 def create_notification(user_id, type, content):
     db = connect_db()
     notifications = db["notifications"]
@@ -1199,6 +1344,83 @@ def get_unread_messages_count(user_id):
 
     return count
 
+def mark_notifications(user_id):
+    db = connect_db()
+    notifications = db["notifications"]
+
+    try:
+        notifications.update_many(
+            {"user_id": user_id},
+            {"$set": {"is_read": 1}}
+        )
+        return True
+    
+    except Exception as e:
+        print(f"Error: {e}")
+        return False
+    
+def mark_messages(user_id, sender):
+    db = connect_db()
+    messages = db["messages"]
+
+    try:
+        messages.update_many(
+            {"receiver_id": user_id, "sender_id": sender},
+            {"$set": {"is_read": 1}}
+        )
+        return True
+    
+    except Exception as e:
+        print(f"Error: {e}")
+        return False
+    
+def clear_notifications(user_id):
+    db = connect_db()
+    notifications = db["notifications"]
+
+    try:
+        notifications.delete_many({"user_id": user_id})
+        return True
+    
+    except Exception as e:
+        print(f"Error: {e}")
+        return False
+    
+def create_alias(user_id, alias, command):
+    db = connect_db()
+    command_aliases = db["command_aliases"]
+
+    now_timestamp = timestamp()
+
+    try:
+        existing = command_aliases.find_one({
+            "user_id": user_id,
+            "alias": alias
+        })
+
+        if existing:
+            command_aliases.update_one({
+                "user_id": user_id,
+                "alias": alias
+            },
+            {"$set": {
+                "command": command,
+                "created": now_timestamp
+            }})
+            return True, f"Alias '{alias}' updated."
+        
+        else:
+            command_aliases.insert_one({
+                "user_id": user_id,
+                "alias": alias,
+                "command": command,
+                "created": now_timestamp
+            })
+            return True, f"Alias '{alias}' created."
+        
+    except Exception as e:
+        return False, f"Error: {e}"
+
 def get_user_aliases(user_id):
     db = connect_db()
     command_aliases = db["command_aliases"]
@@ -1210,6 +1432,20 @@ def get_user_aliases(user_id):
         results[alias["alias"]] = alias["command"]
 
     return results
+
+def remove_alias(user_id, alias):
+    db = connect_db()
+    command_aliases = db["command_aliases"]
+
+    try:
+        command_aliases.delete_one({
+            "user_id": user_id,
+            "alias": alias
+        })
+        return True, f"Alias '{alias}' removed."
+
+    except Exception as e:
+        return False, f"Error: {e}"
 
 def update_user(user_id, **kwargs):
     db = connect_db()
@@ -1235,3 +1471,94 @@ def update_user(user_id, **kwargs):
     except Exception as e:
         print(f"Error: {e}")
         return False
+    
+def create_admin():
+    db = connect_db()
+    users = db["users"]
+
+    admin = users.find_one({"is_admin": 1})
+    
+    if admin is None:
+        password_hash, password_salt = hash_password(DEFAULT_ADMIN_PASSWORD)
+        now_timestamp = timestamp()
+        user_id = get_next_id("user_id")
+
+        users.insert_one({
+            "_id": user_id,
+            "username": "admin",
+            "password_hash": password_hash,
+            "password_salt": password_salt,
+            "created": now_timestamp,
+            "display_name": "",
+            "bio": "Admin",
+            "status": "",
+            "location": "",
+            "website": "",
+            "profile_ascii": "",
+            "is_admin": 1,
+            "is_banned": 0,
+            "ban_reason": "",
+            "is_private": 0,
+            "is_verified": 1,
+            "login_attempts": 0,
+            "locked_until": 0
+        })
+
+def admin_log(admin_id, action, target_user_id=None, details=None):
+    db = connect_db()
+    admin_logs = db["admin_logs"]
+
+    now_timestamp = timestamp()
+
+    try:
+        admin_logs.insert_one({
+            "admin_id": admin_id,
+            "action": action,
+            "target_user_id": target_user_id,
+            "details": details,
+            "created": now_timestamp
+        })
+    
+    except Exception as e:
+        print(f"Error: {e}")
+
+def get_admin_logs(limit, offset):
+    db = connect_db()
+    admin_logs = db["admin_logs"]
+    users = db["users"]
+
+    results = []
+
+    cursor = admin_logs.find().sort("created", DESCENDING).skip(offset).limit(limit)
+
+    for log in cursor:
+        log["id"] = log["_id"]
+
+        admin = users.find_one({"_id": log["admin_id"]})
+        if admin:
+            log["admin_username"] = admin["username"]
+
+        results.append(dict(log))
+
+    return results
+
+def get_statistics():
+    db = connect_db()
+    users = db["users"]
+    posts = db["posts"]
+    comments = db["comments"]
+    likes = db["likes"]
+    reposts = db["reposts"]
+    follows = db["follows"]
+
+    stats = {}
+
+    stats["user_count"] = users.count_documents({})
+    stats["banned_count"] = users.count_documents({"is_banned": 1})
+    stats["post_count"] = posts.count_documents({"deleted": 0})
+    stats["like_count"] = likes.count_documents({})
+    stats["follow_count"] = follows.count_documents({})
+    stats["comment_count"] = comments.count_documents({"deleted": 0})
+    stats["repost_count"] = reposts.count_documents({"is_deleted": 0})
+
+    return stats

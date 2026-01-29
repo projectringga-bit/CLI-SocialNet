@@ -188,6 +188,8 @@ def print_banner_admin():
     print("║" + pad_line(f"    Total Posts:     {stats["post_count"]}", WIDTH) + "║")
     print("║" + pad_line(f"    Total Likes:     {stats["like_count"]}", WIDTH) + "║")
     print("║" + pad_line(f"    Total Follows:   {stats["follow_count"]}", WIDTH) + "║")
+    print("║" + pad_line(f"    Total Comments:  {stats["comment_count"]}", WIDTH) + "║")
+    print("║" + pad_line(f"    Total Reposts:   {stats["repost_count"]}", WIDTH) + "║")
     print("║" + " " * WIDTH + "║")
     
     print("╠" + "═" * WIDTH + "╣")

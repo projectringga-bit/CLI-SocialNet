@@ -1480,4 +1480,18 @@ def get_statistics():
     else:
         stats["follow_count"] = 0
 
+    cursor.execute("SELECT COUNT(*) AS comment_count FROM comments WHERE deleted = 0")
+    row = cursor.fetchone()
+    if row:
+        stats["comment_count"] = row["comment_count"]
+    else:
+        stats["comment_count"] = 0
+    
+    cursor.execute("SELECT COUNT(*) AS repost_count FROM reposts WHERE is_deleted = 0")
+    row = cursor.fetchone()
+    if row:
+        stats["repost_count"] = row["repost_count"]
+    else:
+        stats["repost_count"] = 0
+
     return stats
