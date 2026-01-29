@@ -1,6 +1,7 @@
 from pymongo import MongoClient
 from pymongo import DESCENDING
 from pymongo import ReturnDocument
+import re
 
 from utils import hash_password, timestamp
 from config import MONGODB_URI, MONGODB_NAME
@@ -70,12 +71,10 @@ def init_db():
     mentions.create_index("mentioned_user", unique=True)
 
     likes = db["likes"]
-    likes.create_index("user_id", unique=True)
-    likes.create_index("post_id", unique=True)
+    likes.create_index([("user_id", 1), ("post_id", 1)], unique=True)
 
     follows = db["follows"]
-    follows.create_index("follower_id", unique=True)
-    follows.create_index("followed_id", unique=True)
+    follows.create_index([("follower_id", 1), ("followed_id", 1)], unique=True)
 
     comments = db["comments"]
     comments.create_index("user_id")
@@ -97,8 +96,7 @@ def init_db():
     admin_logs.create_index("target_user_id")
 
     command_aliases = db["command_aliases"]
-    command_aliases.create_index("user_id", unique=True)
-    command_aliases.create_index("alias", unique=True)
+    command_aliases.create_index([("user_id", 1), ("alias", 1)], unique=True)
 
     return True
 
@@ -160,7 +158,7 @@ def create_user(username, password, machine_id=None):
 
         count = registration_limits.count_documents({
             "machine_id": machine_id,
-            "created_at": {"$gte": hour}
+            "created": {"$gte": hour}
         })
         if count >= 3:
             return False, "Registration limit exceeded for this machine. Please try again later."
@@ -270,7 +268,10 @@ def create_session(user_id, token, expires):
     now_timestamp = timestamp()
 
     try:
+        session_id = get_next_id("session_id")
+
         sessions.insert_one({
+            "_id": session_id,
             "user_id": user_id,
             "token": token,
             "created": now_timestamp,
@@ -378,15 +379,16 @@ def get_post(post_id, viewer_id=None):
     comments = db["comments"]
     reposts = db["reposts"]
 
-    post = posts.find_one({"_id": post_id,
-                            "deleted": 0
-                            })
+    post = posts.find_one({
+        "_id": post_id,
+        "deleted": 0
+    })
     if post is None:
         return None
     
     user = users.find_one({"_id": post["user_id"]})
-    if user is None:
-        return None
+    if user:
+        post["username"] = user["username"]
     
     post["like_count"] = likes.count_documents({"post_id": post_id})
     post["comment_count"] = comments.count_documents({"post_id": post_id, "deleted": 0})
@@ -444,7 +446,7 @@ def get_feed_posts(user_id, limit=20, offset=0):
         
         else:
             user = users.find_one({"_id": post["user_id"]})
-            if user and user.get("is_private", 0) == 1:
+            if user and user.get("is_private", 0) == 0:
                 include_post = True
 
             else:
@@ -477,6 +479,83 @@ def get_feed_posts(user_id, limit=20, offset=0):
 
     return results[offset:offset + limit]
 
+def get_global_feed_posts(limit=10, offset=0, viewer_id=None):
+    db = connect_db()
+    posts = db["posts"]
+    users = db["users"]
+    likes = db["likes"]
+    comments = db["comments"]
+    reposts = db["reposts"]
+    follows = db["follows"]
+
+    results = []
+
+    if viewer_id is None: # only public
+        cursor = posts.find({
+            "deleted": 0
+        }).sort("created", DESCENDING)
+
+        for post in cursor:
+            user = users.find_one({"_id": post["user_id"]})
+
+            if user:
+                if user.get("is_private", 0) == 0:
+                    post["username"] = user["username"]
+                    post["like_count"] = likes.count_documents({"post_id": post["_id"]})
+                    post["comment_count"] = comments.count_documents({"post_id": post["_id"], "deleted": 0})
+                    post["repost_count"] = reposts.count_documents({"post_id": post["_id"], "is_deleted": 0})
+
+                    post["id"] = post["_id"]
+
+                    results.append(dict(post))
+
+            if len(results) >= limit + offset:
+                break
+
+    else:
+        cursor = posts.find({
+            "deleted": 0
+        }).sort("created", DESCENDING)
+
+        for post in cursor:
+            if post["user_id"] == viewer_id:
+                include_post = True
+            
+            else:
+                user = users.find_one({"_id": post["user_id"]})
+                if user and user.get("is_private", 0) == 0:
+                    include_post = True
+
+                else:
+                    is_mutual = follows.find_one({
+                        "follower_id": viewer_id,
+                        "followed_id": post["user_id"]
+                    }) and follows.find_one({
+                        "follower_id": post["user_id"],
+                        "followed_id": viewer_id
+                    })
+
+                    include_post = is_mutual
+
+            if include_post:
+                user = users.find_one({"_id": post["user_id"]})
+
+                if user:
+                    post["username"] = user["username"]
+                
+                post["like_count"] = likes.count_documents({"post_id": post["_id"]})
+                post["comment_count"] = comments.count_documents({"post_id": post["_id"], "deleted": 0})
+                post["repost_count"] = reposts.count_documents({"post_id": post["_id"], "is_deleted": 0})
+
+                post["id"] = post["_id"]
+                
+                results.append(dict(post))
+
+                if len(results) >= limit + offset:
+                    break
+
+    return results[offset:offset + limit]
+
 def get_posts_by_id(user_id, limit=10, offset=0, viewer_id=None):
     db = connect_db()
     posts = db["posts"]
@@ -491,9 +570,10 @@ def get_posts_by_id(user_id, limit=10, offset=0, viewer_id=None):
         
     results = []
 
-    posts = posts.find({"user_id": user_id,
-                        "deleted": 0
-                        })
+    posts = posts.find({
+        "user_id": user_id,
+        "deleted": 0
+    })
     
     for post in posts.sort("created", DESCENDING):
         user = users.find_one({"_id": post["user_id"]})
@@ -513,14 +593,17 @@ def get_posts_by_id(user_id, limit=10, offset=0, viewer_id=None):
 
         results.append(dict(post))
 
-    reposts = reposts.find({"user_id": user_id,
-                            "is_deleted": 0
-                            })
+    reposts = reposts.find({
+        "user_id": user_id,
+        "is_deleted": 0
+        })
     
     for repost in reposts.sort("created", DESCENDING):
-        post = posts.find_one({"_id": repost["post_id"],
-                                "deleted": 0
-                                })
+        post = posts.find_one({
+            "_id": repost["post_id"],
+            "deleted": 0
+        })
+        
         if post:
             post_user = users.find_one({"_id": post["user_id"]})
             repost_user = users.find_one({"_id": repost["user_id"]})
@@ -573,16 +656,526 @@ def like_post(user_id, post_id):
     now_timestamp = timestamp()
 
     try:
-        likes.insert_one({
+        result = likes.insert_one({
             "user_id": user_id,
             "post_id": post_id,
             "created": now_timestamp
         })
 
-        return True, 1
+        owner = get_post_owner(post_id)
+        if owner != user_id:
+            user = get_user_by_id(user_id)
+            create_notification(owner, "like", f"User @{user['username']} liked your #{post_id} post.")
+
+
+        return True, result.inserted_id
     
     except Exception as e:
         return False, f"Error: {e}"
+
+def unlike_post(user_id, post_id):
+    db = connect_db()
+    likes = db["likes"]
+
+    existing = likes.find_one({
+        "user_id": user_id,
+        "post_id": post_id
+    })
+    if existing is None:
+        return False, "You have not liked this post."
+    
+    try:
+        likes.delete_one({
+            "user_id": user_id,
+            "post_id": post_id
+        })
+        return True, existing["_id"]
+    
+    except Exception as e:
+        return False, f"Error: {e}"
+    
+def get_post_likes(post_id):
+    db = connect_db()
+    likes = db["likes"]
+    users = db["users"]
+
+    results = []
+
+    cursor = likes.find({"post_id": post_id}).sort("created", DESCENDING)
+
+    for like in cursor:
+        user = users.find_one({"_id": like["user_id"]})
+        if user:
+            results.append({
+                "id": user["_id"],
+                "username": user["username"]
+            })
+
+    return results
+
+def get_posts_count(user_id):
+    db = connect_db()
+    posts = db["posts"]
+
+    count = posts.count_documents({
+        "user_id": user_id,
+        "deleted": 0
+    })
+
+    return count
+
+def follow_user(current_user_id, target_user_id):
+    db = connect_db()
+    follows = db["follows"]
+
+    if current_user_id == target_user_id:
+        return False, "You cannot follow yourself."
+    
+    existing = follows.find_one({
+        "follower_id": current_user_id,
+        "followed_id": target_user_id
+    })
+    if existing:
+        return False, "You are already following this user."
+    
+    now_timestamp = timestamp()
+
+    try:
+        result = follows.insert_one({
+            "follower_id": current_user_id,
+            "followed_id": target_user_id,
+            "created": now_timestamp
+        })
+
+        follower = get_user_by_id(current_user_id)
+        create_notification(target_user_id, "follow", f"User @{follower['username']} started following you.")
+
+        return True, result.inserted_id
+
+    except Exception as e:
+        return False, f"Error: {e}"
+
+def unfollow_user(current_user_id, target_user_id):
+    db = connect_db()
+    follows = db["follows"]
+
+    existing = follows.find_one({
+        "follower_id": current_user_id,
+        "followed_id": target_user_id
+    })
+    if existing is None:
+        return False, "You are not following this user."
+    
+    try:
+        follows.delete_one({
+            "follower_id": current_user_id,
+            "followed_id": target_user_id
+        })
+        return True, existing["_id"]
+    
+    except Exception as e:
+        return False, f"Error: {e}"
+    
+def get_followers(user_id):
+    db = connect_db()
+    follows = db["follows"]
+    users = db["users"]
+
+    results = []
+
+    cursor = follows.find({"followed_id": user_id}).sort("created", DESCENDING)
+
+    for follow in cursor:
+        user = users.find_one({"_id": follow["follower_id"]})
+        if user:
+            results.append({
+                "id": user["_id"],
+                "username": user["username"]
+            })
+
+    return results
+
+def get_following(user_id, viewer_id=None):
+    db = connect_db()
+    follows = db["follows"]
+    users = db["users"]
+
+    if viewer_id is not None:
+        if not can_view_content(viewer_id, user_id):
+            return []
+
+    results = []
+
+    cursor = follows.find({"follower_id": user_id}).sort("created", DESCENDING)
+
+    for follow in cursor:
+        user = users.find_one({"_id": follow["followed_id"]})
+        if user:
+            results.append({
+                "id": user["_id"],
+                "username": user["username"]
+            })
+
+    return results
+
+def get_followers_count(user_id):
+    db = connect_db()
+    follows = db["follows"]
+
+    count = follows.count_documents({
+        "followed_id": user_id
+    })
+
+    return count
+
+def get_following_count(user_id, viewer_id=None):
+    db = connect_db()
+    follows = db["follows"]
+
+    if viewer_id is not None:
+        if not can_view_content(viewer_id, user_id):
+            return 0
+
+    count = follows.count_documents({
+        "follower_id": user_id
+    })
+
+    return count
+
+def is_following(follower_id, followed_id):
+    db = connect_db()
+    follows = db["follows"]
+
+    existing = follows.find_one({
+        "follower_id": follower_id,
+        "followed_id": followed_id
+    })
+    if existing:
+        return True
+    
+    return False
+
+def create_comment(user_id, post_id, content):
+    db = connect_db()
+    comments = db["comments"]
+
+    owner = get_post_owner(post_id)
+    if not can_view_content(user_id, owner):
+        return False, "You cannot comment on this post."
+    
+    now_timestamp = timestamp()
+
+    try:
+        comment_id = get_next_id("comment_id")
+
+        result = comments.insert_one({
+            "_id": comment_id,
+            "user_id": user_id,
+            "post_id": post_id,
+            "content": content,
+            "created": now_timestamp,
+            "deleted": 0
+        })
+
+        owner = get_post_owner(post_id)
+        if owner != user_id:
+            user = get_user_by_id(user_id)
+            create_notification(owner, "comment", f"User @{user['username']} commented on your #{post_id} post.")
+        
+        return True, comment_id
+    
+    except Exception as e:
+        return False, f"Error: {e}"
+
+def get_comments_by_post(post_id, limit, viewer_id=None):
+    db = connect_db()
+    comments = db["comments"]
+    users = db["users"]
+
+    if viewer_id is not None:
+        owner = get_post_owner(post_id)
+        if not can_view_content(viewer_id, owner):
+            return []
+        
+    results = []
+
+    cursor = comments.find({
+        "post_id": post_id,
+        "deleted": 0
+    }).sort("created", DESCENDING).limit(limit)
+
+    for comment in cursor:
+        user = users.find_one({"_id": comment["user_id"]})
+        if user:
+            comment["username"] = user["username"]
+        
+        comment["id"] = comment["_id"]
+
+        results.append(dict(comment))
+
+    return results
+
+def get_comments_count(post_id):
+    db = connect_db()
+    comments = db["comments"]
+
+    count = comments.count_documents({
+        "post_id": post_id,
+        "deleted": 0
+    })
+
+    return count
+
+def get_comment(comment_id):
+    db = connect_db()
+    comments = db["comments"]
+    users = db["users"]
+
+    comment = comments.find_one({
+        "_id": comment_id,
+        "deleted": 0
+    })
+    if comment is None:
+        return None
+    
+    user = users.find_one({"_id": comment["user_id"]})
+    if user:
+        comment["username"] = user["username"]
+
+    comment["id"] = comment["_id"]
+
+    return dict(comment)
+
+def delete_comment(comment_id):
+    db = connect_db()
+    comments = db["comments"]
+    
+    try:
+        comments.update_one(
+            {"_id": comment_id},
+            {"$set": {"deleted": 1}}
+        )
+        return True
+    
+    except Exception as e:
+        print(f"Error: {e}")
+        return False
+    
+def create_repost(user_id, post_id, content=None):
+    db = connect_db()
+    reposts = db["reposts"]
+
+    owner = get_post_owner(post_id)
+    if not can_view_content(user_id, owner):
+        return False, "You cannot repost this post."
+    
+    existing = reposts.find_one({
+        "user_id": user_id,
+        "post_id": post_id,
+        "is_deleted": 0
+    })
+    if existing:
+        return False, "You have already reposted this post."
+    
+    now_timestamp = timestamp()
+
+    try:
+        result = reposts.insert_one({
+            "user_id": user_id,
+            "post_id": post_id,
+            "content": content,
+            "created": now_timestamp,
+            "is_deleted": 0
+        })
+
+        owner = get_post_owner(post_id)
+        if owner != user_id:
+            user = get_user_by_id(user_id)
+            if content:
+                create_notification(owner, "quote_repost", f"User @{user['username']} quote reposted your #{post_id} post.")
+            else:
+                create_notification(owner, "repost", f"User @{user['username']} reposted your #{post_id} post.")
+   
+        return True, result.inserted_id
+    
+    except Exception as e:
+        return False, f"Error: {e}"
+    
+def delete_repost(repost_id):
+    db = connect_db()
+    reposts = db["reposts"]
+    
+    repost = reposts.find_one({
+        "user_id": repost_id,
+        "post_id": repost_id,
+        "is_deleted": 0
+    })
+    if repost is None:
+        return False, "You have not reposted this post."
+    
+    try:
+        reposts.update_one(
+            {"post_id": repost_id,
+             "user_id": repost_id},
+            {"$set": {"is_deleted": 1}}
+        )
+        return True, repost["_id"]
+    
+    except Exception as e:
+        return False, f"Error: {e}"
+    
+def get_reposts_count(post_id):
+    db = connect_db()
+    reposts = db["reposts"]
+
+    count = reposts.count_documents({
+        "post_id": post_id,
+        "is_deleted": 0
+    })
+
+    return count
+
+def get_reposts(post_id, viewer_id=None):
+    db = connect_db()
+    reposts = db["reposts"]
+    users = db["users"]
+
+    if viewer_id is not None:
+        owner = get_post_owner(post_id)
+        if not can_view_content(viewer_id, owner):
+            return []
+        
+    results = []
+
+    cursor = reposts.find({
+        "post_id": post_id,
+        "is_deleted": 0
+    }).sort("created", DESCENDING)
+
+    for repost in cursor:
+        user = users.find_one({"_id": repost["user_id"]})
+        if user:
+            repost["username"] = user["username"]
+        
+        repost["id"] = repost["_id"]
+
+        results.append(dict(repost))
+
+    return results
+
+def search_posts(query, limit=10, offset=0, viewer_id=None):
+    db = connect_db()
+    posts = db["posts"]
+    users = db["users"]
+    likes = db["likes"]
+    comments = db["comments"]
+    reposts = db["reposts"]
+    follows = db["follows"]
+
+    search_query = query.lower()
+    search_query = re.escape(search_query)
+
+    results = []
+
+    cursor = posts.find({
+        "content": {
+            "$regex": search_query,
+            "$options": "i"
+        },
+        "deleted": 0
+    }).sort("created", DESCENDING)
+
+    for post in cursor:
+        if post["user_id"] == viewer_id:
+            include_post = True
+        
+        else:
+            user = users.find_one({"_id": post["user_id"]})
+            if user and user.get("is_private", 0) == 0:
+                include_post = True
+
+            else:
+                is_mutual = follows.find_one({
+                    "follower_id": viewer_id,
+                    "followed_id": post["user_id"]
+                }) and follows.find_one({
+                    "follower_id": post["user_id"],
+                    "followed_id": viewer_id
+                })
+
+                include_post = is_mutual
+        
+        if include_post:
+            user = users.find_one({"_id": post["user_id"]})
+
+            if user:
+                post["username"] = user["username"]
+            
+            post["like_count"] = likes.count_documents({"post_id": post["_id"]})
+            post["comment_count"] = comments.count_documents({"post_id": post["_id"], "deleted": 0})
+            post["repost_count"] = reposts.count_documents({"post_id": post["_id"], "is_deleted": 0})
+
+            post["id"] = post["_id"]
+            
+            results.append(dict(post))
+
+            if len(results) >= limit + offset:
+                break
+
+    return results[offset:offset + limit]
+
+def search_users(query, limit=10, offset=0):
+    db = connect_db()
+    users = db["users"]
+
+    search_query = query.lower()
+    search_query = re.escape(search_query)
+
+    results = []
+
+    cursor = users.find({
+        "username": {
+            "$regex": search_query,
+            "$options": "i"
+        },
+        "is_banned": 0
+    }).sort("created", DESCENDING).skip(offset).limit(limit)
+
+    for user in cursor:
+        user["id"] = user["_id"]
+        results.append(dict(user))
+
+    return results
+
+def create_notification(user_id, type, content):
+    db = connect_db()
+    notifications = db["notifications"]
+
+    now_timestamp = timestamp()
+
+    notifications.insert_one({
+        "user_id": user_id,
+        "type": type,
+        "content": content,
+        "is_read": 0,
+        "created": now_timestamp
+    })
+
+def get_notifications(user_id, limit=20):
+    db = connect_db()
+    notifications = db["notifications"]
+
+    results = []
+
+    cursor = notifications.find({
+        "user_id": user_id
+    }).sort("created", DESCENDING).limit(limit)
+
+    for notification in cursor:
+        notification["id"] = notification["_id"]
+        results.append(dict(notification))
+
+    return results
 
 def get_unread_notifications_count(user_id):
     db = connect_db()

@@ -854,12 +854,12 @@ def get_posts_mentioning_username(user_id, limit=10, offset=0, viewer_id=None):
     return results
 
 def follow_user(current_user_id, target_user_id):
-    if current_user_id == target_user_id:
-        return False, "You cannot follow yourself."
-    
     connection = connect_db()
     cursor = connection.cursor()
 
+    if current_user_id == target_user_id:
+        return False, "You cannot follow yourself."
+    
     cursor.execute("SELECT id FROM follows WHERE follower_id = ? AND followed_id = ?", (current_user_id, target_user_id))
     if cursor.fetchone() is not None:
         return False, "You are already following this user."
