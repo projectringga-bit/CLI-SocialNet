@@ -72,6 +72,36 @@ def init_db():
                     "deleted INTEGER DEFAULT 0," \
                     "FOREIGN KEY (user_id) REFERENCES users(id))")
     
+    # polls table
+    cursor.execute("CREATE TABLE IF NOT EXISTS polls (" \
+                   "id INTEGER PRIMARY KEY AUTOINCREMENT," \
+                   "post_id INTEGER NOT NULL," \
+                   "user_id INTEGER NOT NULL," \
+                   "question TEXT NOT NULL," \
+                   "created INTEGER NOT NULL," \
+                   "FOREIGN KEY (post_id) REFERENCES posts(id)," \
+                   "FOREIGN KEY (user_id) REFERENCES users(id))")
+    
+    # poll options table
+    cursor.execute("CREATE TABLE IF NOT EXISTS poll_options (" \
+                   "id INTEGER PRIMARY KEY AUTOINCREMENT," \
+                   "poll_id INTEGER NOT NULL," \
+                   "option_text TEXT NOT NULL," \
+                   "order_order INTEGER NOT NULL," \
+                   "FOREIGN KEY (poll_id) REFERENCES polls(id))")
+    
+    # poll votes table
+    cursor.execute("CREATE TABLE IF NOT EXISTS poll_votes (" \
+                   "id INTEGER PRIMARY KEY AUTOINCREMENT," \
+                   "poll_id INTEGER NOT NULL," \
+                   "option_id INTEGER NOT NULL," \
+                   "user_id INTEGER NOT NULL," \
+                   "created INTEGER NOT NULL," \
+                   "FOREIGN KEY (poll_id) REFERENCES polls(id)," \
+                   "FOREIGN KEY (option_id) REFERENCES poll_options(id)," \
+                   "FOREIGN KEY (user_id) REFERENCES users(id)," \
+                   "UNIQUE(poll_id, user_id))")
+    
     # reposts table
     cursor.execute("CREATE TABLE IF NOT EXISTS reposts (" \
                    "id INTEGER PRIMARY KEY AUTOINCREMENT," \
@@ -450,6 +480,89 @@ def delete_post(post_id):
     except Exception as e:
         print(f"Error: {e}")
         return False, f"Error: {e}"
+    
+def create_poll(user_id, content, question, options):
+    connection = connect_db()
+    cursor = connection.cursor()
+
+    now_timestamp = timestamp()
+
+    try:
+        cursor.execute("INSERT INTO posts (user_id, content, created) VALUES (?, ?, ?)", (user_id, content, now_timestamp))
+        post_id = cursor.lastrowid
+
+        cursor.execute("INSERT INTO polls (post_id, user_id, question, created) VALUES (?, ?, ?, ?)", (post_id, user_id, question, now_timestamp))
+        poll_id = cursor.lastrowid
+
+        for item, option_text in enumerate(options):
+            cursor.execute("INSERT INTO poll_options (poll_id, option_text, order_order) VALUES (?, ?, ?)", (poll_id, option_text, item))
+
+        connection.commit()
+        return True, post_id
+    
+    except Exception as e:
+        return False, f"Error: {e}"
+    
+def get_poll_by_post_id(post_id, viewer_id=None):
+    connection = connect_db()
+    cursor = connection.cursor()
+
+    cursor.execute("SELECT * FROM polls WHERE post_id = ?", (post_id,))
+    row = cursor.fetchone()
+    if row is None:
+        return None
+    
+    if viewer_id is not None:
+        poll_owner_id = row["user_id"]
+        if not can_view_content(viewer_id, poll_owner_id):
+            return None
+    
+    poll = dict(row)
+    cursor.execute("SELECT poll_options.*, COUNT(poll_votes.id) AS vote_count FROM poll_options LEFT JOIN poll_votes ON poll_options.id = poll_votes.option_id WHERE poll_options.poll_id = ? GROUP BY poll_options.id ORDER BY poll_options.order_order ASC", (poll["id"],))
+
+    options = []
+    for option_row in cursor.fetchall():
+        options.append(dict(option_row))
+    
+    poll["options"] = options
+
+    for option in options:
+        poll["total_votes"] = poll.get("total_votes", 0) + option["vote_count"]
+    
+    return poll
+
+def vote_poll(user_id, poll_id, option_id):
+    connection = connect_db()
+    cursor = connection.cursor()
+
+    now_timestamp = timestamp()
+
+    cursor.execute("SELECT id FROM poll_votes WHERE poll_id = ? AND user_id = ?", (poll_id, user_id))
+    if cursor.fetchone() is not None:
+        return False, "You have already voted in this poll."
+    
+    cursor.execute("SELECT id FROM poll_options WHERE id = ? AND poll_id = ?", (option_id, poll_id))
+    if cursor.fetchone() is None:
+        return False, "Invalid poll option."
+    
+    try:
+        cursor.execute("INSERT INTO poll_votes (poll_id, option_id, user_id, created) VALUES (?, ?, ?, ?)", (poll_id, option_id, user_id, now_timestamp))
+        connection.commit()
+        return True, cursor.lastrowid
+    
+    except Exception as e:
+        return False, f"Error: {e}"
+    
+def get_user_poll_vote(user_id, poll_id):
+    connection = connect_db()
+    cursor = connection.cursor()
+
+    cursor.execute("SELECT option_id FROM poll_votes WHERE poll_id = ? AND user_id = ?", (poll_id, user_id))
+    row = cursor.fetchone()
+    if row is None:
+        return None
+    
+    return row["option_id"]
     
 def get_feed_posts(user_id, limit=10, offset=0):
     connection = connect_db()

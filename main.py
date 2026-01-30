@@ -16,70 +16,73 @@ def help_message_for_logged():
     print("""
 Available commands:
 
-help                             -> Show this help message
-exit, quit                       -> Exit the application
-clear                            -> Clear the console
-register <username>              -> Register a new user
-login <username>                 -> Login
-logout                           -> Logout the current user
-whoami                           -> Show the currently logged in user
-deleteaccount                    -> Delete the currently logged in user's account
-changepassword                   -> Change the password of the currently logged in user
-home                             -> Show the home feed
-feed [<page>]                    -> View your feed (posts from people you follow)
-explore [<page>]                 -> View the global feed
-post <content>                   -> Create a new post
-postimg <image_path> [<caption>] -> Create a new post with an image from a local path
-posturl <image_url> [<caption>]  -> Create a new post with an image from a URL
-postbig <big_content> [<content>]-> Create a new post with big text content
-bigtext <big_content>            -> Preview big text content in ASCII
-viewpost <post_id>               -> View a specific post
-deletepost <post_id>             -> Delete a specific post
-search <query> [<page>]          -> Search for posts
-usersearch <query> [<page>]      -> Search for users
-myposts                          -> View your own posts
-repost <post_id>                 -> Repost a post
-unrepost <post_id>               -> Remove your repost of a post
-quote <post_id> <comment>        -> Quote a post with a comment
-reposts <post_id>                -> View users who reposted a post
-pin <post_id>                    -> Pin a post
-unpin <post_id>                  -> Unpin a post
-pinned [<username>]              -> View pinned posts of a user (or yourself if no username is provided)
-hashtag <hashtag> [<page>]       -> View posts with a specific hashtag
-htrending                        -> View trending hashtags
-hsearch <query> [<page>]         -> Search for hashtags
-mentions <username> [<page>]     -> View posts mentioning a user
-bookmark <post_id>               -> Bookmark a post
-unbookmark <post_id>             -> Remove a bookmark from a post
-bookmarks                        -> View your bookmarked posts
-displayname <new_display_name>   -> Change your display name
-like <post_id>                   -> Like a post
-unlike <post_id>                 -> Unlike a post
-likes <post_id>                  -> View likes on a post
-comment <post_id> <comment_text> -> Comment on a post
-delcomment <comment_id>          -> Delete a comment
-comments <post_id>               -> View comments on a post
-follow <username>                -> Follow a user
-unfollow <username>              -> Unfollow a user
-followers [<username>]           -> View followers of a user (or yourself if no username is provided)
-following [<username>]           -> View users followed by a user (or yourself if no username is provided)
-bio <new_bio>                    -> Change your bio
-status <new_status>              -> Change your status
-location <new_location>          -> Change your location
-website <new_website>            -> Change your website
-private                          -> Toggle your account's private status
-avatar <image_path>              -> Change your avatar using a local image path
-avatarurl <image_url>            -> Change your avatar using an image URL
-removeavatar                     -> Remove your avatar
-profile [<username>]             -> View a user's profile (or your own if no username is provided)
-dm <username> <message>          -> Send a direct message to a user
-inbox                            -> View your inbox
-messages <username>              -> View messages with a specific user
-closedm <username>               -> Close the conversation with a specific user
-notifications                    -> View your notifications
-alias [<alias> [<command>]]      -> Create an alias for a command
-unalias <alias>                  -> Remove an alias
-clearn                           -> Clear your notifications
+help                                           -> Show this help message
+exit, quit                                     -> Exit the application
+clear                                          -> Clear the console
+register <username>                            -> Register a new user
+login <username>                               -> Login
+logout                                         -> Logout the current user
+whoami                                         -> Show the currently logged in user
+deleteaccount                                  -> Delete the currently logged in user's account
+changepassword                                 -> Change the password of the currently logged in user
+home                                           -> Show the home feed
+feed [<page>]                                  -> View your feed (posts from people you follow)
+explore [<page>]                               -> View the global feed
+post <content>                                 -> Create a new post
+postimg <image_path> [<caption>]               -> Create a new post with an image from a local path
+posturl <image_url> [<caption>]                -> Create a new post with an image from a URL
+postbig <big_content> [<content>]              -> Create a new post with big text content
+bigtext <big_content>                          -> Preview big text content in ASCII
+postpoll <cont> | <?> | <opt1> | [<opt2>] |... -> Create a new poll post
+viewpost <post_id>                             -> View a specific post
+deletepost <post_id>                           -> Delete a specific post
+search <query> [<page>]                        -> Search for posts
+usersearch <query> [<page>]                    -> Search for users
+myposts                                        -> View your own posts
+repost <post_id>                               -> Repost a post
+unrepost <post_id>                             -> Remove your repost of a post
+quote <post_id> <comment>                      -> Quote a post with a comment
+reposts <post_id>                              -> View users who reposted a post
+pin <post_id>                                  -> Pin a post
+unpin <post_id>                                -> Unpin a post
+pinned [<username>]                            -> View pinned posts of a user (or yourself if no username provided)
+hashtag <hashtag> [<page>]                     -> View posts with a specific hashtag
+htrending                                      -> View trending hashtags
+hsearch <query> [<page>]                       -> Search for hashtags
+mentions <username> [<page>]                   -> View posts mentioning a user
+bookmark <post_id>                             -> Bookmark a post
+unbookmark <post_id>                           -> Remove a bookmark from a post
+bookmarks                                      -> View your bookmarked posts
+displayname <new_display_name>                 -> Change your display name
+like <post_id>                                 -> Like a post
+unlike <post_id>                               -> Unlike a post
+likes <post_id>                                -> View likes on a post
+comment <post_id> <comment_text>               -> Comment on a post
+delcomment <comment_id>                        -> Delete a comment
+comments <post_id>                             -> View comments on a post
+votepoll <poll_id> <option_num>                -> Vote in a poll
+mypolls [<page>]                               -> View your created polls
+follow <username>                              -> Follow a user
+unfollow <username>                            -> Unfollow a user
+followers [<username>]                         -> View followers of a user (or yourself if no username provided)
+following [<username>]                         -> View users followed by a user (or yourself if no username provided)
+bio <new_bio>                                  -> Change your bio
+status <new_status>                            -> Change your status
+location <new_location>                        -> Change your location
+website <new_website>                          -> Change your website
+private                                        -> Toggle your account's private status
+avatar <image_path>                            -> Change your avatar using a local image path
+avatarurl <image_url>                          -> Change your avatar using an image URL
+removeavatar                                   -> Remove your avatar
+profile [<username>]                           -> View a user's profile (or your own if no username is provided)
+dm <username> <message>                        -> Send a direct message to a user
+inbox                                          -> View your inbox
+messages <username>                            -> View messages with a specific user
+closedm <username>                             -> Close the conversation with a specific user
+notifications                                  -> View your notifications
+alias [<alias> [<command>]]                    -> Create an alias for a command
+unalias <alias>                                -> Remove an alias
+clearn                                         -> Clear your notifications
 """)
     
 
@@ -113,16 +116,35 @@ comments <post_id>               -> View comments on a post
 def show_status():
     if auth.is_logged():
         user = auth.get_current_user()
+        if auth.is_admin():
+            admin_status = " (Admin)"
+        else:
+            admin_status = ""
+        
+        if user.get("is_verified"):
+            verified_status = " ✔"
+        else:
+            verified_status = ""
+
+        success, notifications_count, messages_count = social.get_unread()
+
+        alerts = []
+        if notifications_count > 0:
+            alerts.append(f"🔔 {notifications_count}")
+        if messages_count > 0:
+            alerts.append(f"✉️{messages_count}")
+
+        if alerts:
+            alerts_status = " | " + " ".join(alerts)
+        else:
+            alerts_status = ""
         
         display_name = user.get("display_name")
 
-        if auth.is_admin():
-            print_info("Logged in as Admin.")
-
         if display_name:
-            print_info(f"Logged in as: {display_name} (@{user['username']})")
+            print_info(f"Logged in as: {display_name} (@{user['username']}){admin_status}{verified_status}{alerts_status}")
         else:
-            print(f"Logged in as: @{user['username']}")
+            print(f"Logged in as: @{user['username']}{admin_status}{verified_status}{alerts_status}")
     
     else:
         print_info("No user is currently logged in. Use 'login' or 'register' to continue.")
@@ -430,6 +452,33 @@ def execute_command(command, args): # returns True (continue) or False (exit)
         big_content = args[0]
 
         ascii.preview_text(big_content)
+
+    
+    elif command == "postpoll":
+        if not auth.is_logged():
+            print_warning("You must be logged in to create a poll post.")
+            return True
+        
+        if len(args) < 3:
+            print_error("Usage: postpoll <content> | <question> | <option1> | [<option2>] | ...")
+            return True
+        
+        command = " ".join(args)
+        parts= []
+        for p in command.split("|"):
+            p = p.strip()
+            parts.append(p)
+
+        content = parts[0]
+        question = parts[1]
+        options = parts[2:]
+
+        success, message = posts.create_poll_post(content, question, options)
+        
+        if success:
+            print_success(message)
+        else:
+            print_error(message)
 
 
     elif command == "viewpost":        
@@ -955,6 +1004,72 @@ def execute_command(command, args): # returns True (continue) or False (exit)
 
         else:
             print_info("No comments on this post yet.")
+
+
+    elif command == "votepoll":
+        if not auth.is_logged():
+            print_warning("You must be logged in to vote in a poll.")
+            return True
+        
+        if len(args) != 2:
+            print_error("Usage: votepoll <post_id> <option_number>")
+            return True
+        
+        post_id = int(args[0])
+        option_number = int(args[1])
+
+        poll = posts.get_poll_by_post_id(post_id)
+        if not poll:
+            print_error("No poll found.")
+            return True
+
+        if option_number < 1 or option_number > len(poll["options"]):
+            print_error("Invalid option number.")
+            return True
+            
+        option_id = poll["options"][option_number - 1]['id']
+        user = auth.get_current_user()
+
+        success, message = posts.vote_poll(user["id"], poll["id"], option_id, post_id)
+
+        if success:
+            print_success(message)
+        else:
+            print_error(message)
+
+
+    elif command == "mypolls":
+        if not auth.is_logged():
+            print_warning("You must be logged in to view your polls.")
+            return True
+        
+        if len(args) > 1:
+            print_error("Usage: mypolls [<page>]")
+            return True
+        
+        page = 1
+        if len(args) == 1:
+            try:
+                page = int(args[0])
+
+            except ValueError:
+                print_error("Page must be a number.")
+                return True
+        
+        user = auth.get_current_user()
+        my_posts = posts.get_my_posts(page=page)
+
+        my_posts_with_polls = []
+        for post in my_posts:
+            if db.get_poll_by_post_id(post["id"]):
+                my_posts_with_polls.append(post)
+        
+        success, message = posts.display_multiple_posts(my_posts_with_polls, f"@{user['username']}'s Poll Posts")
+
+        if success:
+            pass
+        else:
+            print_error(message)
 
 
     elif command == "follow":

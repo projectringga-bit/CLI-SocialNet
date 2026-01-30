@@ -258,6 +258,9 @@ def wrap_text(text, content_with_lines):
 
 
 def print_post(data):
+    import db
+    import auth
+
     post_id = data.get("id", "")
     username = data.get("username", "unknown")
     display_name = data.get("display_name", "")
@@ -360,6 +363,52 @@ def print_post(data):
                 print("│" + pad_line(line, WIDTH) + "│")
 
     print("│" + " " * WIDTH + "│")
+
+    poll = db.get_poll_by_post_id(post_id)
+    if poll:
+        question_l = wrap_text(f" POLL: {poll["question"]}", WIDTH - 4)
+
+        for line in question_l:
+            print("│  " + pad_line(line, WIDTH - 4) + "  │")
+        print("│" + " " * WIDTH + "│")
+
+        user_vote = None
+        if auth.is_logged():
+            user = auth.get_current_user()
+            user_vote = db.get_user_poll_vote(user["id"], poll["id"])
+
+        total_votes = poll["total_votes"]
+
+        for item, option in enumerate(poll["options"], start=1):
+            vote_count = option["vote_count"]
+            if total_votes > 0:
+                percentage = (vote_count / total_votes) * 100
+            else:
+                percentage = 0
+
+            filled_part = int((20 * percentage) // 100)
+            bar = "[" + "█" * filled_part + "-" * (20 - filled_part) + "]"
+            
+            if user_vote == option["id"]:
+                user_voted_one = "✓"
+            else:
+                user_voted_one = " "
+
+            option_l = f"  {item}. [{user_voted_one}] {option["option_text"]}"
+            print("│  " + pad_line(option_l, WIDTH - 4) + "  │")
+
+            bar_l = f"     {bar} {vote_count} vote(s) ({percentage:.1f}%)"
+            print("│  " + pad_line(bar_l, WIDTH - 4) + "  │")
+
+        total_l = f"Total Votes: {total_votes}"
+        print("│  " + pad_line(total_l, WIDTH - 4) + "  │")
+        print("│" + " " * WIDTH + "│")
+
+        if user_vote:
+            voted_l = f"You voted for option #{item}."
+            print("│  " + pad_line(voted_l, WIDTH - 4) + "  │")
+            
+        print("│" + " " * WIDTH + "│")
 
     statistics_line = f"  ❤️ {likes_count}   🔁 {reposts_count}   💬 {comments_count}  "
     print("│" + pad_line(statistics_line, WIDTH) + "│")

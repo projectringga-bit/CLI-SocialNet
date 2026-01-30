@@ -73,6 +73,41 @@ def create_post_big(big_text, content=""):
     
     else:
         return False, result
+    
+
+def create_poll_post(content, question, options):
+    if not auth.is_logged():
+        return False, "You must be logged in."
+    
+    if len(content) > 500:
+        return False, "Post content cannot exceed 500 characters."
+    
+    if len(question) > 500:
+        return False, "Poll question cannot exceed 500 characters."
+    
+    if len(options) > 20:
+        return False, "Poll must have no more than 20 options."
+    
+    option_a = []
+    for option in options:
+        if len(option) > 50:
+            return False, "Each poll option cannot exceed 50 characters."
+        
+        option_a.append(option)
+    
+    user = auth.get_current_user()
+
+    success, result = db.create_poll(user["id"], content, question, option_a)
+
+    if success:
+        post_id = result
+        db.hashtag_detection(post_id, content)
+        db.mention_detection(post_id, content, user["id"])
+
+        return True, f"Poll post created! ID: {result}"
+    
+    else:
+        return False, result
 
 
 def delete_post(post_id):
@@ -556,3 +591,21 @@ def search_posts(query, page=1):
     posts = db.search_posts(query, limit=10, offset=offset, viewer_id=viewer_id)
 
     return True, posts
+
+def get_poll_by_post_id(post_id):
+    viewer_id = None
+    if auth.is_logged():
+        current_user = auth.get_current_user()
+        viewer_id = current_user["id"]
+    
+    poll = db.get_poll_by_post_id(post_id, viewer_id=viewer_id)
+    
+    return poll
+
+def vote_poll(user_id, poll_id, option_id, post_id):    
+    success, result = db.vote_poll(user_id, poll_id, option_id)
+
+    if success:
+        return True, f"Vote recorded on post #{post_id}."
+    else:
+        return False, result

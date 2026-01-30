@@ -48,6 +48,18 @@ def init_db():
     posts.create_index("created")
     posts.create_index([("deleted", ASCENDING), ("created", DESCENDING)])
 
+    polls = db["polls"]
+    polls.create_index("post_id")
+    polls.create_index("user_id")
+
+    poll_options = db["poll_options"]
+    poll_options.create_index("poll_id")
+    poll_options.create_index([("poll_id", ASCENDING), ("order_order", ASCENDING)])
+
+    poll_votes = db["poll_votes"]
+    poll_votes.create_index([("poll_id", ASCENDING), ("user_id", ASCENDING)], unique=True)
+    poll_votes.create_index("option_id")
+
     reposts = db["reposts"]
     reposts.create_index("user_id")
     reposts.create_index("post_id")
@@ -416,6 +428,140 @@ def delete_post(post_id):
     except Exception as e:
         print(f"Error: {e}")
         return False, post_id
+    
+def create_poll(user_id, content, question, options):
+    db = connect_db()
+    posts = db["posts"]
+    polls = db["polls"]
+    poll_options = db["poll_options"]
+    
+    now_timestamp = timestamp()
+
+    try:
+        post_id = get_next_id("post_id")
+
+        posts.insert_one({
+            "_id": post_id,
+            "user_id": user_id,
+            "content": content,
+            "created": now_timestamp,
+            "deleted": 0
+        })
+
+        poll_id = get_next_id("poll_id")
+
+        polls.insert_one({
+            "_id": poll_id,
+            "post_id": post_id,
+            "user_id": user_id,
+            "question": question,
+            "created": now_timestamp
+        })
+
+        for item, option_text in enumerate(options):
+            option_id = get_next_id("poll_option_id")
+
+            poll_options.insert_one({
+                "_id": option_id,
+                "poll_id": poll_id,
+                "option_text": option_text,
+                "order_order": item
+            })
+
+        return True, post_id
+    
+    except Exception as e:
+        return False, f"Error: {e}"
+    
+def get_poll_by_post_id(post_id, viewer_id=None):
+    db = connect_db()
+    polls = db["polls"]
+    poll_options = db["poll_options"]
+    poll_votes = db["poll_votes"]
+
+    poll = polls.find_one({"post_id": post_id})
+    if poll is None:
+        return None
+    
+    if viewer_id is not None:
+        owner = poll["user_id"]
+        if not can_view_content(viewer_id, owner):
+            return None
+        
+    poll = dict(poll)
+    poll["id"] = poll["_id"]
+
+    options = []
+    cursor = poll_options.find({"poll_id": poll["_id"]}).sort("order_order", ASCENDING)
+
+    for option in cursor:
+        option_dict = dict(option)
+        option_dict["id"] = option["_id"]
+
+        vote_count = poll_votes.count_documents({"option_id": option["_id"]})
+        option_dict["vote_count"] = vote_count
+
+        options.append(option_dict)
+
+    poll["options"] = options
+
+    total_votes = 0
+    for option in options:
+        total_votes += option["vote_count"]
+
+    poll["total_votes"] = total_votes
+
+    return poll
+
+def vote_poll(user_id, poll_id, option_id):
+    db = connect_db()
+    poll_votes = db["poll_votes"]
+    poll_options = db["poll_options"]
+
+    now_timestamp = timestamp()
+
+    existing = poll_votes.find_one({
+        "poll_id": poll_id,
+        "user_id": user_id
+    })
+    if existing:
+        return False, "You have already voted in this poll."
+    
+    option = poll_options.find_one({
+        "_id": option_id,
+        "poll_id": poll_id
+    })
+    if option is None:
+        return False, "Invalid poll option."
+    
+    try:
+        vote_id = get_next_id("poll_vote_id")
+
+        poll_votes.insert_one({
+            "_id": vote_id,
+            "poll_id": poll_id,
+            "option_id": option_id,
+            "user_id": user_id,
+            "created": now_timestamp
+        })
+
+        return True, vote_id
+    
+    except Exception as e:
+        return False, f"Error: {e}"
+    
+def get_user_poll_vote(user_id, poll_id):
+    db = connect_db()
+    poll_votes = db["poll_votes"]
+
+    vote = poll_votes.find_one({
+        "poll_id": poll_id,
+        "user_id": user_id
+    })
+    if vote is None:
+        return None
+    
+    return vote["option_id"]
     
 def get_feed_posts(user_id, limit=20, offset=0):
     db = connect_db()
