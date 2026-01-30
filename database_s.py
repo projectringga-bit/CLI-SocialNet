@@ -715,7 +715,7 @@ def get_pinned_posts(user_id, viewer_id=None):
         if not can_view_content(viewer_id, user_id):
             return []
 
-    cursor.execute("SELECT posts.*, users.username, (SELECT COUNT(*) FROM likes WHERE likes.post_id = posts.id) AS like_count, (SELECT COUNT(*) FROM reposts WHERE reposts.post_id = posts.id AND reposts.is_deleted = 0) AS repost_count FROM pinned_posts JOIN posts ON pinned_posts.post_id = posts.id JOIN users ON posts.user_id = users.id WHERE pinned_posts.user_id = ? AND posts.deleted = 0 ORDER BY pinned_posts.created DESC", (user_id,))
+    cursor.execute("SELECT posts.*, users.username, (SELECT COUNT(*) FROM likes WHERE likes.post_id = posts.id) AS like_count, (SELECT COUNT(*) FROM reposts WHERE reposts.post_id = posts.id AND reposts.is_deleted = 0) AS repost_count, (SELECT COUNT(*) FROM comments WHERE comments.post_id = posts.id AND comments.deleted = 0) AS comment_count FROM pinned_posts JOIN posts ON pinned_posts.post_id = posts.id JOIN users ON posts.user_id = users.id WHERE pinned_posts.user_id = ? AND posts.deleted = 0 ORDER BY pinned_posts.created DESC", (user_id,))
     
     results = []
     for row in cursor.fetchall():

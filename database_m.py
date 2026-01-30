@@ -53,23 +53,19 @@ def init_db():
     reposts.create_index("post_id")
 
     bookmarks = db["bookmarks"]
-    bookmarks.create_index("user_id", unique=True)
-    bookmarks.create_index("post_id", unique=True)
+    bookmarks.create_index([("user_id", ASCENDING), ("post_id", ASCENDING)], unique=True)
 
     pinned_posts = db["pinned_posts"]
-    pinned_posts.create_index("user_id", unique=True)
-    pinned_posts.create_index("post_id", unique=True)
+    pinned_posts.create_index([("user_id", ASCENDING), ("post_id", ASCENDING)], unique=True)
 
     hashtags = db["hashtags"]
     hashtags.create_index("hashtag", unique=True)
 
     post_hashtags = db["post_hashtags"]
-    post_hashtags.create_index("post_id", unique=True)
-    post_hashtags.create_index("hashtag_id", unique=True)
+    post_hashtags.create_index([("post_id", ASCENDING), ("hashtag_id", ASCENDING)], unique=True)
 
     mentions = db["mentions"]
-    mentions.create_index("post_id", unique=True)
-    mentions.create_index("mentioned_user", unique=True)
+    mentions.create_index([("post_id", ASCENDING), ("mentioned_user", ASCENDING)], unique=True)
 
     likes = db["likes"]
     likes.create_index([("user_id", ASCENDING), ("post_id", ASCENDING)], unique=True)
@@ -415,11 +411,11 @@ def delete_post(post_id):
             {"_id": post_id},
             {"$set": {"deleted": 1}}
         )
-        return True
+        return True, post_id
     
     except Exception as e:
         print(f"Error: {e}")
-        return False
+        return False, post_id
     
 def get_feed_posts(user_id, limit=20, offset=0):
     db = connect_db()
@@ -574,12 +570,12 @@ def get_posts_by_id(user_id, limit=10, offset=0, viewer_id=None):
         
     results = []
 
-    posts = posts.find({
+    posts_posts = posts.find({
         "user_id": user_id,
         "deleted": 0
     })
     
-    for post in posts.sort("created", DESCENDING):
+    for post in posts_posts:
         user = users.find_one({"_id": post["user_id"]})
 
         if user:
@@ -597,12 +593,12 @@ def get_posts_by_id(user_id, limit=10, offset=0, viewer_id=None):
 
         results.append(dict(post))
 
-    reposts = reposts.find({
+    reposts_cursor = reposts.find({
         "user_id": user_id,
         "is_deleted": 0
         })
     
-    for repost in reposts.sort("created", DESCENDING):
+    for repost in reposts_cursor:
         post = posts.find_one({
             "_id": repost["post_id"],
             "deleted": 0
@@ -622,7 +618,7 @@ def get_posts_by_id(user_id, limit=10, offset=0, viewer_id=None):
             if repost_user:
                 post["repost_username"] = repost_user["username"]
             post["quote_content"] = repost.get("quote_content", None)
-            post["original_created"] = post["created"]
+            post["original_created"] = repost["created"]
 
             post["id"] = post["_id"]
 
@@ -727,6 +723,443 @@ def get_posts_count(user_id):
     })
 
     return count
+
+def create_bookmark(user_id, post_id):
+    db = connect_db()
+    bookmarks = db["bookmarks"]
+
+    owner = get_post_owner(post_id)
+    if not can_view_content(user_id, owner):
+        return False, "You cannot bookmark this post."
+    
+    existing = bookmarks.find_one({
+        "user_id": user_id,
+        "post_id": post_id
+    })
+    if existing:
+        return False, "Post is already bookmarked."
+    
+    now_timestamp = timestamp()
+
+    try:
+        result = bookmarks.insert_one({
+            "user_id": user_id,
+            "post_id": post_id,
+            "created": now_timestamp
+        })
+
+        return True, result.inserted_id
+    
+    except Exception as e:
+        return False, f"Error: {e}"
+    
+def remove_bookmark(user_id, post_id):
+    db = connect_db()
+    bookmarks = db["bookmarks"]
+
+    existing = bookmarks.find_one({
+        "user_id": user_id,
+        "post_id": post_id
+    })
+    if existing is None:
+        return False, "Post is not bookmarked."
+    
+    try:
+        bookmarks.delete_one({
+            "user_id": user_id,
+            "post_id": post_id
+        })
+        return True, existing["_id"]
+    
+    except Exception as e:
+        return False, f"Error: {e}"
+    
+def get_bookmarks(user_id, limit=5, page=1):
+    db = connect_db()
+    bookmarks = db["bookmarks"]
+    posts = db["posts"]
+    users = db["users"]
+    likes = db["likes"]
+    comments = db["comments"]
+    reposts = db["reposts"]
+
+    offset = (page - 1) * limit
+
+    results = []
+
+    cursor = bookmarks.find({"user_id": user_id}).sort("created", DESCENDING).skip(offset).limit(limit)
+
+    for bookmark in cursor:
+        post = posts.find_one({
+            "_id": bookmark["post_id"],
+            "deleted": 0
+        })
+        if post:
+            user = users.find_one({"_id": post["user_id"]})
+
+            if user:
+                post["username"] = user["username"]
+            
+            post["like_count"] = likes.count_documents({"post_id": post["_id"]})
+            post["comment_count"] = comments.count_documents({"post_id": post["_id"], "deleted": 0})
+            post["repost_count"] = reposts.count_documents({"post_id": post["_id"], "is_deleted": 0})
+            post["bookmark_created"] = bookmark["created"]
+
+            post["id"] = post["_id"]
+
+            results.append(dict(post))
+
+    return results
+
+def pin_post(user_id, post_id):
+    db = connect_db()
+    pinned_posts = db["pinned_posts"]
+
+    count = pinned_posts.count_documents({"user_id": user_id})
+    if count >= 3:
+        return False, "You can only pin up to 3 posts."
+    
+    existing = pinned_posts.find_one({
+        "user_id": user_id,
+        "post_id": post_id
+    })
+    if existing:
+        return False, "Post is already pinned."
+    
+    now_timestamp = timestamp()
+
+    try:
+        result = pinned_posts.insert_one({
+            "user_id": user_id,
+            "post_id": post_id,
+            "created": now_timestamp
+        })
+
+        return True, result.inserted_id
+    
+    except Exception as e:
+        return False, f"Error: {e}"
+    
+def unpin_post(user_id, post_id):
+    db = connect_db()
+    pinned_posts = db["pinned_posts"]
+
+    existing = pinned_posts.find_one({
+        "user_id": user_id,
+        "post_id": post_id
+    })
+    if existing is None:
+        return False, "Post is not pinned."
+    
+    try:
+        pinned_posts.delete_one({
+            "user_id": user_id,
+            "post_id": post_id
+        })
+        return True, existing["_id"]
+    
+    except Exception as e:
+        return False, f"Error: {e}"
+    
+def get_pinned_posts(user_id, viewer_id=None):
+    db = connect_db()
+    pinned_posts = db["pinned_posts"]
+    posts = db["posts"]
+    users = db["users"]
+    likes = db["likes"]
+    comments = db["comments"]
+    reposts = db["reposts"]
+
+    if viewer_id is not None:
+        if not can_view_content(viewer_id, user_id):
+            return []
+
+    results = []
+
+    cursor = pinned_posts.find({"user_id": user_id}).sort("created", DESCENDING)
+
+    for pinned in cursor:
+        post = posts.find_one({
+            "_id": pinned["post_id"],
+            "deleted": 0
+        })
+        if post:
+            user = users.find_one({"_id": post["user_id"]})
+
+            if user:
+                post["username"] = user["username"]
+            
+            post["like_count"] = likes.count_documents({"post_id": post["_id"]})
+            post["comment_count"] = comments.count_documents({"post_id": post["_id"], "deleted": 0})
+            post["repost_count"] = reposts.count_documents({"post_id": post["_id"], "is_deleted": 0})
+
+            post["id"] = post["_id"]
+
+            results.append(dict(post))
+
+    return results
+
+def hashtag_detection(post_id, content):
+    db = connect_db()
+    hashtags_collection = db["hashtags"]
+    post_hashtags = db["post_hashtags"]
+
+    hashtags = re.findall(r"#(\w+)", content)
+
+    for hashtag in hashtags:
+        hashtag_lower = hashtag.lower().strip()
+
+        existing = hashtags_collection.find_one({"hashtag": hashtag_lower})
+        if existing is None:
+            now_timestamp = timestamp()
+            hashtag_id = get_next_id("hashtag_id")
+            
+            hashtags_collection.insert_one({
+                "_id": hashtag_id,
+                "hashtag": hashtag_lower,
+                "created": now_timestamp
+            })
+
+        else:
+            hashtag_id = existing["_id"]
+
+        try:
+            post_hashtags.insert_one({
+                "post_id": post_id,
+                "hashtag_id": hashtag_id
+            })
+        
+        except Exception as e:
+            print(f"Error: {e}")
+            continue
+    
+    return hashtags
+
+def get_posts_using_hashtag(hashtag, limit=10, offset=0, viewer_id=None):
+    db = connect_db()
+    hashtags = db["hashtags"]
+    post_hashtags = db["post_hashtags"]
+    posts = db["posts"]
+    users = db["users"]
+    likes = db["likes"]
+    comments = db["comments"]
+    reposts = db["reposts"]
+    follows = db["follows"]
+
+    hashtag_lower = hashtag.lower().strip().lstrip("#")
+
+    tag = hashtags.find_one({"hashtag": hashtag_lower})
+    if tag is None:
+        return []
+    
+    post_links = post_hashtags.find({"hashtag_id": tag["_id"]})
+    posts_ids = []
+    for link in post_links:
+        posts_ids.append(link["post_id"])
+
+    results = []
+
+    cursor = posts.find({
+        "_id": {"$in": posts_ids},
+        "deleted": 0
+    }).sort("created", DESCENDING)
+
+    for post in cursor:
+        user = users.find_one({"_id": post["user_id"]})
+        if user:
+            if user["_id"] == viewer_id:
+                include_post = True
+
+            else:
+                if user.get("is_private", 0) == 1:
+                    continue
+
+                include_post = False
+                if viewer_id is None:
+                    if user.get("is_private", 0) == 0:
+                        include_post = True
+
+                else:
+                    if user.get("is_private", 0) == 0:
+                        include_post = True
+                    
+                    else:
+                        is_mutual = follows.find_one({
+                            "follower_id": viewer_id,
+                            "followed_id": user["_id"]
+                        }) and follows.find_one({
+                            "follower_id": user["_id"],
+                            "followed_id": viewer_id
+                        })
+
+                        include_post = is_mutual
+                
+            if include_post:
+                post["username"] = user["username"]
+                
+                post["like_count"] = likes.count_documents({"post_id": post["_id"]})
+                post["comment_count"] = comments.count_documents({"post_id": post["_id"], "deleted": 0})
+                post["repost_count"] = reposts.count_documents({"post_id": post["_id"], "is_deleted": 0})
+
+                post["id"] = post["_id"]
+
+                results.append(dict(post))
+
+                if len(results) >= limit + offset:
+                    break
+
+    return results[offset:offset + limit]
+
+def get_trending_hashtags(limit=10):
+    db = connect_db()
+    hashtags = db["hashtags"]
+    post_hashtags = db["post_hashtags"]
+    posts = db["posts"]
+
+    hashtag_counts = {}
+
+    for hashtag in hashtags.find():
+        post_links = post_hashtags.find({"hashtag_id": hashtag["_id"]})
+        count = 0
+
+        for link in post_links:
+            post = posts.find_one({
+                "_id": link["post_id"],
+                "deleted": 0
+            })
+            if post:
+                count += 1
+        
+        if count > 0:
+            hashtag_counts[hashtag["hashtag"]] = count
+
+    sorted_hashtags = sorted(hashtag_counts.items(), key=lambda x: x[1], reverse=True)
+
+    results = []
+    for hashtag, count in sorted_hashtags[:limit]:
+        results.append({
+            "hashtag": hashtag,
+            "usage_count": count
+        })
+
+    return results
+
+def search_hashtags(hashtag, limit, offset):
+    db = connect_db()
+    hashtags = db["hashtags"]
+    post_hashtags = db["post_hashtags"]
+
+    hashtag_search = hashtag.lower().strip()
+    hashtag_search = re.escape(hashtag_search)
+
+    results = []
+
+    cursor = hashtags.find({
+        "hashtag": {
+            "$regex": f"^{hashtag_search}",
+            "$options": "i"
+            }
+    })
+
+    for hashtag in cursor:
+        hashtag_dict = dict(hashtag)
+
+        usage_count = post_hashtags.count_documents({"hashtag_id": hashtag["_id"]})
+
+        hashtag_dict["id"] = hashtag["_id"]
+        hashtag_dict["usage_count"] = usage_count
+        results.append(dict(hashtag_dict))
+    
+    results.sort(key=lambda x: x.get("usage_count"), reverse=True)
+
+    return results[offset:offset + limit]
+
+def mention_detection(post_id, content, user_id):
+    db = connect_db()
+    mentions_collection = db["mentions"]
+    
+    mentions = re.findall(r"@(\w+)", content)
+
+    mentioned = []
+
+    for username in mentions:
+        user = get_user_by_username(username)
+
+        if user and user["_id"] != user_id:
+            now_timestamp = timestamp()
+
+            mentions_collection.insert_one({
+                "post_id": post_id,
+                "mentioned_user": user["_id"],
+                "created": now_timestamp
+            })
+
+            mentioned.append(user["username"])
+
+            create_notification(user["id"], "mention", f"User @{get_user_by_id(user_id)['username']} mentioned you in their #{post_id} post.")
+
+    return mentioned
+
+def get_posts_mentioning_username(user_id, limit=10, offset=0, viewer_id=None):
+    db = connect_db()
+    mentions = db["mentions"]
+    posts = db["posts"]
+    users = db["users"]
+    likes = db["likes"]
+    comments = db["comments"]
+    reposts = db["reposts"]
+    follows = db["follows"]
+
+    results = []
+
+    cursor = mentions.find({"mentioned_user": user_id}).sort("created", DESCENDING)
+
+    for mention in cursor:
+        post = posts.find_one({
+            "_id": mention["post_id"],
+            "deleted": 0
+        })
+        if post:
+            if viewer_id is not None:
+                if post["user_id"] == viewer_id:
+                    include_post = True
+                
+                else:
+                    user = users.find_one({"_id": post["user_id"]})
+                    if user and user.get("is_private", 0) == 0:
+                        include_post = True
+
+                    else:
+                        is_mutual = follows.find_one({
+                            "follower_id": viewer_id,
+                            "followed_id": post["user_id"]
+                        }) and follows.find_one({
+                            "follower_id": post["user_id"],
+                            "followed_id": viewer_id
+                        })
+
+                        include_post = is_mutual
+
+                if not include_post:
+                    continue
+
+            user = users.find_one({"_id": post["user_id"]})
+
+            if user:
+                post["username"] = user["username"]
+            
+            post["like_count"] = likes.count_documents({"post_id": post["_id"]})
+            post["comment_count"] = comments.count_documents({"post_id": post["_id"], "deleted": 0})
+            post["repost_count"] = reposts.count_documents({"post_id": post["_id"], "is_deleted": 0})
+
+            post["id"] = post["_id"]
+
+            results.append(dict(post))
+
+            if len(results) >= limit + offset:
+                break
+
+    return results[offset:offset + limit]
 
 def follow_user(current_user_id, target_user_id):
     db = connect_db()
@@ -1005,12 +1438,12 @@ def create_repost(user_id, post_id, content=None):
     except Exception as e:
         return False, f"Error: {e}"
     
-def delete_repost(repost_id):
+def delete_repost(user_id, repost_id):
     db = connect_db()
     reposts = db["reposts"]
     
     repost = reposts.find_one({
-        "user_id": repost_id,
+        "user_id": user_id,
         "post_id": repost_id,
         "is_deleted": 0
     })
@@ -1020,7 +1453,7 @@ def delete_repost(repost_id):
     try:
         reposts.update_one(
             {"post_id": repost_id,
-             "user_id": repost_id},
+             "user_id": user_id},
             {"$set": {"is_deleted": 1}}
         )
         return True, repost["_id"]
