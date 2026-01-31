@@ -108,6 +108,10 @@ def init_db():
     command_aliases = db["command_aliases"]
     command_aliases.create_index([("user_id", ASCENDING), ("alias", ASCENDING)], unique=True)
 
+    settings = db["settings"]
+    settings.create_index("user_id", unique=True)
+
+
     create_admin()
 
     return True
@@ -1575,7 +1579,7 @@ def create_repost(user_id, post_id, content=None):
         if owner != user_id:
             user = get_user_by_id(user_id)
             if content:
-                create_notification(owner, "quote_repost", f"User @{user['username']} quote reposted your #{post_id} post.")
+                create_notification(owner, "repost", f"User @{user['username']} quote reposted your #{post_id} post.")
             else:
                 create_notification(owner, "repost", f"User @{user['username']} reposted your #{post_id} post.")
    
@@ -1875,6 +1879,22 @@ def create_notification(user_id, type, content):
     db = connect_db()
     notifications = db["notifications"]
 
+    settings = get_user_settings(user_id)
+
+    available_types = {
+        "follow": "notify_on_follow",
+        "like": "notify_on_like",
+        "comment": "notify_on_comment",
+        "repost": "notify_on_repost",
+        "mention": "notify_on_mention",
+        "quote_repost": "notify_on_mention",
+        "message": "notify_on_dm"
+    }
+    key = available_types.get(type)
+    if key:
+        if not settings.get(key, 1):
+            return
+
     now_timestamp = timestamp()
 
     notifications.insert_one({
@@ -2120,6 +2140,86 @@ def get_admin_logs(limit, offset):
         results.append(dict(log))
 
     return results
+
+def get_user_settings(user_id):
+    db = connect_db()
+    settings = db["settings"]
+
+    existing = settings.find_one({"user_id": user_id})
+    
+    if existing is None:
+        settings_id = get_next_id("settings_id")
+
+        settings.insert_one({
+            "_id": settings_id,
+            "user_id": user_id,
+            "banner_color": "cyan",
+            "prompt_color": "white",
+            "posts_per_page": 10,
+            "notify_on_like": 1,
+            "notify_on_comment": 1,
+            "notify_on_follow": 1,
+            "notify_on_mention": 1,
+            "notify_on_repost": 1,
+            "notify_on_dm": 1
+        })
+
+        user_settings = settings.find_one({"user_id": user_id})
+    
+    user_settings = settings.find_one({"user_id": user_id})
+
+    return dict(user_settings)
+
+def update_settings(user_id, setting, value):
+    db = connect_db()
+    settings = db["settings"]
+
+    allowed_settings = {
+        "banner_color": str,
+        "prompt_color": str,
+        "posts_per_page": int,
+        "notify_on_follow": int,
+        "notify_on_like": int,
+        "notify_on_comment": int,
+        "notify_on_repost": int,
+        "notify_on_mention": int,
+        "notify_on_dm": int
+    }
+
+    if setting not in allowed_settings:
+        return False, "Invalid setting."
+    
+    get_user_settings(user_id)
+
+    if allowed_settings[setting] == int:
+        try:
+            value = int(value)
+        except ValueError:
+            return False, f"{setting} must be a number."
+    
+    if setting == "posts_per_page":
+        if value < 1 or value > 50:
+            return False, f"{setting} must be between 1 and 50."
+    
+    if setting in ["notify_on_follow", "notify_on_like", "notify_on_comment", "notify_on_repost", "notify_on_mention", "notify_on_dm"]:
+        if value not in [0, 1]:
+            return False, f"{setting} must be 0 or 1."
+        
+    if setting in ["banner_color", "prompt_color"]:
+        valid_colors = ["red", "green", "yellow", "blue", "magenta", "cyan", "white"]
+        if value not in valid_colors:
+            return False, f"{setting} must be one of: red, green, yellow, blue, magenta, cyan, white."
+        
+    try:
+        settings.update_one(
+            {"user_id": user_id},
+            {"$set": {setting: value}}
+        )
+
+        return True, f"{setting} updated successfully."
+    
+    except Exception as e:
+        return False, f"Error: {e}"
 
 def get_statistics():
     db = connect_db()

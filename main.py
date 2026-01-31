@@ -8,8 +8,8 @@ import posts
 import social
 import admin
 import ascii
-from utils import print_success, print_error, print_warning, print_info, print_separator, print_banner, print_post, print_comment
-from utils import clear
+from utils import print_success, print_error, print_warning, print_info, print_separator, print_banner, print_post, print_comment, print_settings
+from utils import clear, get_color_code
 
 
 def help_message_for_logged():
@@ -83,6 +83,8 @@ notifications                                  -> View your notifications
 alias [<alias> [<command>]]                    -> Create an alias for a command
 unalias <alias>                                -> Remove an alias
 clearn                                         -> Clear your notifications
+settings                                       -> View your settings
+setting <setting_name> <new_value>             -> Change a specific setting
 """)
     
 
@@ -187,7 +189,14 @@ def execute_command(command, args): # returns True (continue) or False (exit)
 
     elif command == "clear":
         clear()
-        print_banner()
+
+        banner_color = "cyan"
+        if auth.is_logged():
+            user = auth.get_current_user()
+            settings = db.get_user_settings(user["id"])
+            banner_color = settings.get("banner_color", "cyan")
+
+        print_banner(banner_color)
 
 
     elif command == "home":
@@ -289,6 +298,15 @@ def execute_command(command, args): # returns True (continue) or False (exit)
         success, message = auth.login(username, password)
 
         if success:
+            clear()
+
+            banner_color = "cyan"
+            if auth.is_logged():
+                user = auth.get_current_user()
+                settings = db.get_user_settings(user["id"])
+                banner_color = settings.get("banner_color", "cyan")
+
+            print_banner(banner_color)
             print_success(message)
         else:
             print_error(message)
@@ -302,6 +320,15 @@ def execute_command(command, args): # returns True (continue) or False (exit)
         success, message = auth.logout()
 
         if success:
+            clear()
+
+            banner_color = "cyan"
+            if auth.is_logged():
+                user = auth.get_current_user()
+                settings = db.get_user_settings(user["id"])
+                banner_color = settings.get("banner_color", "cyan")
+
+            print_banner(banner_color)
             print_success(message)
         else:
             print_error(message)
@@ -315,6 +342,11 @@ def execute_command(command, args): # returns True (continue) or False (exit)
         if len(args) != 0:
             print_error("Usage: deleteaccount")
             return True
+        
+        if auth.is_admin():
+            if auth.get_current_user()["username"] == "admin":
+                print_error("The default admin account cannot be deleted.")
+                return True
         
         confirm = input("Are you sure you want to delete your account? This action cannot be undone. (yes/no): ").strip().lower()
         if confirm == "yes":
@@ -1501,6 +1533,42 @@ def execute_command(command, args): # returns True (continue) or False (exit)
         social.display_notifications()
 
 
+    elif command == "settings":
+        if not auth.is_logged():
+            print_warning("You must be logged in to view settings.")
+            return True
+        
+        if len(args) != 0:
+            print_error("Usage: settings")
+            return True
+        
+        user = auth.get_current_user()
+        settings = db.get_user_settings(user["id"])
+
+        print_settings(settings)
+
+
+    elif command == "setting":
+        if not auth.is_logged():
+            print_warning("You must be logged in to change settings.")
+            return True
+        
+        if len(args) != 2:
+            print_error("Usage: setting <setting_name> <new_value>")
+            return True
+        
+        user = auth.get_current_user()
+        setting_name = args[0]
+        new_value = args[1]
+
+        success, message = db.update_settings(user["id"], setting_name, new_value)
+
+        if success:
+            print_success(message)
+        else:
+            print_error(message)
+
+
     elif command == "alias":
         if not auth.is_logged():
             print_warning("You must be logged in to manage command aliases.")
@@ -1747,6 +1815,9 @@ def main():
             if auth.is_logged():
                 user = auth.get_current_user()
 
+                settings = db.get_user_settings(user["id"])
+                prompt_color = settings.get("prompt_color", "white")
+
                 success, unread_n_count, unread_m_count = social.get_unread()
                 
                 if not success:
@@ -1764,7 +1835,7 @@ def main():
                 else:
                     notifications_str = ""
 
-                prompt = f"\n@{user['username']}{notifications_str}> "
+                prompt = f"\n{get_color_code(prompt_color)}@{user['username']}{notifications_str}> {get_color_code("white")}"
             else:
                 prompt = "\nsocialnet> "
         

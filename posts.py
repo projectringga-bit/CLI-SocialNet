@@ -145,40 +145,56 @@ def get_home_feed():
 
 
 def get_feed(page=1):
+    posts_per_page = 10
+
     if not auth.is_logged():
         return False, "You must be logged in."
     
     user = auth.get_current_user()
     
-    offset = (page - 1) * 10
+    settings = db.get_user_settings(user["id"])
+    posts_per_page = settings.get("posts_per_page", 10)
 
-    posts = db.get_feed_posts(user["id"], limit=10, offset=offset)
+    offset = (page - 1) * posts_per_page
+
+    posts = db.get_feed_posts(user["id"], limit=posts_per_page, offset=offset)
 
     return posts
 
 
 def get_global_feed(page=1):
-    offset = (page - 1) * 10
+    posts_per_page = 10
+
+    if auth.is_logged():
+        user = auth.get_current_user()
+        settings = db.get_user_settings(user["id"])
+        posts_per_page = settings.get("posts_per_page", 10)
+
+    offset = (page - 1) * posts_per_page
     
     viewer_id = None
     if auth.is_logged():
         current_user = auth.get_current_user()
         viewer_id = current_user["id"]
 
-    posts = db.get_global_feed_posts(limit=10, offset=offset, viewer_id=viewer_id)
+    posts = db.get_global_feed_posts(limit=posts_per_page, offset=offset, viewer_id=viewer_id)
 
     return posts
 
 
 def get_my_posts(page=1):
+    posts_per_page = 10
     if not auth.is_logged():
         return []
     
     user = auth.get_current_user()
 
-    offset = (page - 1) * 10
+    settings = db.get_user_settings(user["id"])
+    posts_per_page = settings.get("posts_per_page", 10)
+
+    offset = (page - 1) * posts_per_page
     
-    posts = db.get_posts_by_id(user["id"], limit=10, offset=offset, viewer_id=user["id"])
+    posts = db.get_posts_by_id(user["id"], limit=posts_per_page, offset=offset, viewer_id=user["id"])
 
     return posts
 
@@ -427,14 +443,21 @@ def get_pinned_posts_by_user(username):
 
 
 def search_hashtag(hashtag, page=1):
-    offset = (page - 1) * 10
+    posts_per_page = 10
+
+    if auth.is_logged():
+        user = auth.get_current_user()
+        settings = db.get_user_settings(user["id"])
+        posts_per_page = settings.get("posts_per_page", 10)
+
+    offset = (page - 1) * posts_per_page
 
     viewer_id = None
     if auth.is_logged():
         current_user = auth.get_current_user()
         viewer_id = current_user["id"]
 
-    posts = db.get_posts_using_hashtag(hashtag, limit=10, offset=offset, viewer_id=viewer_id)
+    posts = db.get_posts_using_hashtag(hashtag, limit=posts_per_page, offset=offset, viewer_id=viewer_id)
 
     return True, posts
 
@@ -454,7 +477,14 @@ def search_hashtags(hashtag, page=1):
 
 
 def get_mentions(username, page=1):
-    offset = (page - 1) * 10
+    posts_per_page = 10
+
+    if auth.is_logged():
+        user = auth.get_current_user()
+        settings = db.get_user_settings(user["id"])
+        posts_per_page = settings.get("posts_per_page", 10)
+
+    offset = (page - 1) * posts_per_page
 
     user = db.get_user_by_username(username)
     if user is None:
@@ -465,7 +495,7 @@ def get_mentions(username, page=1):
         current_user = auth.get_current_user()
         viewer_id = current_user["id"]
 
-    posts = db.get_posts_mentioning_username(user["id"], limit=10, offset=offset, viewer_id=viewer_id)
+    posts = db.get_posts_mentioning_username(user["id"], limit=posts_per_page, offset=offset, viewer_id=viewer_id)
 
     return True, posts
 
@@ -581,14 +611,21 @@ def get_post_comments(post_id, limit=50):
 
 
 def search_posts(query, page=1):
-    offset = (page - 1) * 10
+    posts_per_page = 10
+
+    if auth.is_logged():
+        user = auth.get_current_user()
+        settings = db.get_user_settings(user["id"])
+        posts_per_page = settings.get("posts_per_page", 10)
+
+    offset = (page - 1) * posts_per_page
 
     viewer_id = None
     if auth.is_logged():
         current_user = auth.get_current_user()
         viewer_id = current_user["id"]
 
-    posts = db.search_posts(query, limit=10, offset=offset, viewer_id=viewer_id)
+    posts = db.search_posts(query, limit=posts_per_page, offset=offset, viewer_id=viewer_id)
 
     return True, posts
 

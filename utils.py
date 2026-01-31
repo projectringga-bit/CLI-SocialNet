@@ -8,6 +8,20 @@ import datetime
 import unicodedata
 
 
+COLORS = {
+    "red": "\033[91m",
+    "green": "\033[92m",
+    "yellow": "\033[93m",
+    "blue": "\033[94m",
+    "magenta": "\033[95m",
+    "cyan": "\033[96m",
+    "gray": "\033[90m",
+    "white": "\033[0m"
+}
+
+def get_color_code(color_name):
+    return COLORS.get(color_name, COLORS["white"])
+
 def hash_password(password, salt=None):
     if salt is None:
         salt = secrets.token_hex(32)
@@ -73,7 +87,7 @@ def print_separator():
     print("\033[90m" + "-" * 82 + "\033[0m")  # gray
 
 
-def print_banner():
+def print_banner(color="cyan"):
     banner = r"""
  ██████╗██╗     ██╗    ███████╗ ██████╗  ██████╗██╗ █████╗ ██╗     ███╗   ██╗███████╗████████╗
 ██╔════╝██║     ██║    ██╔════╝██╔═══██╗██╔════╝██║██╔══██╗██║     ████╗  ██║██╔════╝╚══██╔══╝
@@ -87,7 +101,7 @@ def print_banner():
 /_/  \__/_/ /_/_/_/_/_//_/\_,_/_/ /___/\___/\__/_/\_,_/_/ /_/|_/\__/\__/|__,__/\___/_/ /_/\_\    
                                                                                                  
     """
-    print("\033[96m" + banner + "\033[0m")  # cyan
+    print(get_color_code(color) + banner + get_color_code("white"))
 
 
 def clear():
@@ -681,3 +695,77 @@ def print_comment(data):
     print("  │" + " " * WIDTH + "│")
 
     print("  └" + "─" * WIDTH + "┘")
+
+
+def print_settings(settings):
+    WIDTH = 80
+
+    print()
+    print("╔" + "═" * WIDTH + "╗")
+    title_pad = (WIDTH - len(" USER SETTINGS ")) // 2
+    print("║" + " " * title_pad + " USER SETTINGS " + " " * (WIDTH - len(" USER SETTINGS ") - title_pad) + "║")
+
+    print("╠" + "═" * WIDTH + "╣")
+
+    print("║" + pad_line("  Appearance", WIDTH) + "║")
+    print("║" + " " * WIDTH + "║")
+    print("║" + pad_line(f"   banner_color: {settings.get('banner_color', 'cyan')}", WIDTH) + "║")
+    print("║" + pad_line(f"   prompt_color: {settings.get('prompt_color', 'white')}", WIDTH) + "║")
+    print("║" + " " * WIDTH + "║")
+
+    print("╠" + "═" * WIDTH + "╣")
+
+    print("║" + pad_line("  Display", WIDTH) + "║")
+    print("║" + " " * WIDTH + "║")
+    print("║" + pad_line(f"   posts_per_page: {settings.get('posts_per_page', 10)}", WIDTH) + "║")
+    print("║" + " " * WIDTH + "║")
+
+    print("╠" + "═" * WIDTH + "╣")
+
+    print("║" + pad_line("  Notifications", WIDTH) + "║")
+    print("║" + " " * WIDTH + "║")
+
+    if settings.get("notify_on_follow", 1):
+        follow_status = "Enabled"
+    else:
+        follow_status = "Disabled"
+    print("║" + pad_line(f"   notify_on_follow: {follow_status}", WIDTH) + "║")
+    
+    if settings.get("notify_on_like", 1):
+        like_status = "Enabled"
+    else:
+        like_status = "Disabled"
+    print("║" + pad_line(f"   notify_on_like: {like_status}", WIDTH) + "║")
+    
+    if settings.get("notify_on_comment", 1):
+        comment_status = "Enabled"
+    else:
+        comment_status = "Disabled"
+    print("║" + pad_line(f"   notify_on_comment: {comment_status}", WIDTH) + "║")
+    
+    if settings.get("notify_on_repost", 1):
+        repost_status = "Enabled"
+    else:
+        repost_status = "Disabled"
+    print("║" + pad_line(f"   notify_on_repost: {repost_status}", WIDTH) + "║")
+    
+    if settings.get("notify_on_mention", 1):
+        mention_status = "Enabled"
+    else:
+        mention_status = "Disabled"
+    print("║" + pad_line(f"   notify_on_mention: {mention_status}", WIDTH) + "║")
+    
+    if settings.get("notify_on_dm", 1):
+        dm_status = "Enabled"
+    else:
+        dm_status = "Disabled"
+    print("║" + pad_line(f"   notify_on_dm: {dm_status}", WIDTH) + "║")
+    print("║" + " " * WIDTH + "║")
+    
+    print("╠" + "═" * WIDTH + "╣")
+
+    print("║" + pad_line(" Setting: 0 for Disabled, 1 for Enabled", WIDTH) + "║")    
+    print("║" + pad_line(" Available colors: red, green, yellow, blue, magenta, cyan, white", WIDTH) + "║")
+
+    print("╚" + "═" * WIDTH + "╝")
+    print()

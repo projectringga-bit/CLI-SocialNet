@@ -543,8 +543,14 @@ def display_notifications():
 
 
 def search_users(query, page=1):
-    offset = (page - 1) * 10
+    posts_per_page = 10
+    if auth.is_logged():
+        user = auth.get_current_user()
+        settings = db.get_user_settings(user["id"])
+        posts_per_page = settings.get("posts_per_page", 10)
 
-    users = db.search_users(query, limit=10, offset=offset)
+    offset = (page - 1) * posts_per_page
+
+    users = db.search_users(query, limit=posts_per_page, offset=offset)
 
     return True, users

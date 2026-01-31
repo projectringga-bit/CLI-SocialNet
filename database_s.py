@@ -240,6 +240,21 @@ def init_db():
                    "created INTEGER NOT NULL," \
                    "FOREIGN KEY (user_id) REFERENCES users(id)," \
                    "UNIQUE(user_id, alias))")
+    
+    # Settings table
+    cursor.execute("CREATE TABLE IF NOT EXISTS settings (" \
+                   "id INTEGER PRIMARY KEY AUTOINCREMENT," \
+                   "user_id INTEGER NOT NULL," \
+                   "banner_color TEXT DEFAULT 'cyan'," \
+                   "prompt_color TEXT DEFAULT 'white'," \
+                   "posts_per_page INTEGER DEFAULT 10," \
+                   "notify_on_like INTEGER DEFAULT 1," \
+                   "notify_on_comment INTEGER DEFAULT 1," \
+                   "notify_on_follow INTEGER DEFAULT 1," \
+                   "notify_on_mention INTEGER DEFAULT 1," \
+                   "notify_on_repost INTEGER DEFAULT 1," \
+                   "notify_on_dm INTEGER DEFAULT 1," \
+                   "FOREIGN KEY (user_id) REFERENCES users(id))")
 
 
     connection.commit()
@@ -1176,7 +1191,7 @@ def create_repost(user_id, post_id, content=None):
         if owner != user_id:
             user = get_user_by_id(user_id)
             if content:
-                create_notification(owner, "quote_repost", f"User @{user['username']} quote reposted your #{post_id} post.")
+                create_notification(owner, "repost", f"User @{user['username']} quote reposted your #{post_id} post.")
             else:
                 create_notification(owner, "repost", f"User @{user['username']} reposted your #{post_id} post.")
 
@@ -1361,6 +1376,22 @@ def reopen_conversation(user_id, other_id):
 def create_notification(user_id, type, content):
     connection = connect_db()
     cursor = connection.cursor()
+
+    settings = get_user_settings(user_id)
+
+    available_types = {
+        "follow": "notify_on_follow",
+        "like": "notify_on_like",
+        "comment": "notify_on_comment",
+        "repost": "notify_on_repost",
+        "mention": "notify_on_mention",
+        "quote_repost": "notify_on_mention",
+        "message": "notify_on_dm"
+    }
+    key = available_types.get(type)
+    if key:
+        if not settings.get(key, 1):
+            return
 
     now_timestamp = timestamp()
 
@@ -1551,6 +1582,71 @@ def get_admin_logs(limit, offset):
         results.append(dict(row))
 
     return results
+
+def get_user_settings(user_id):
+    connection = connect_db()
+    cursor = connection.cursor()
+
+    cursor.execute("SELECT * FROM settings WHERE user_id = ?", (user_id,))
+    row = cursor.fetchone()
+    if row is None:
+        cursor.execute("INSERT INTO settings (user_id, banner_color, prompt_color, posts_per_page, notify_on_follow, notify_on_like, notify_on_comment, notify_on_repost, notify_on_mention, notify_on_dm) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)", (user_id, "cyan", "white", 10, 1, 1, 1, 1, 1, 1))
+        connection.commit()
+
+        cursor.execute("SELECT * FROM settings WHERE user_id = ?", (user_id,))
+
+        row = cursor.fetchone()
+    
+    return dict(row)
+
+def update_settings(user_id, setting, value):
+    connection = connect_db()
+    cursor = connection.cursor()
+
+    allowed_settings = {
+        "banner_color": str,
+        "prompt_color": str,
+        "posts_per_page": int,
+        "notify_on_follow": int,
+        "notify_on_like": int,
+        "notify_on_comment": int,
+        "notify_on_repost": int,
+        "notify_on_mention": int,
+        "notify_on_dm": int
+    }
+    
+    if setting not in allowed_settings:
+        return False, "Invalid setting."
+    
+    get_user_settings(user_id)
+
+    if allowed_settings[setting] == int:
+        try:
+            value = int(value)
+        except ValueError:
+            return False, f"{setting} must be a number."
+    
+    if setting == "posts_per_page":
+        if value < 1 or value > 50:
+            return False, f"{setting} must be between 1 and 50."
+    
+    if setting in ["notify_on_follow", "notify_on_like", "notify_on_comment", "notify_on_repost", "notify_on_mention", "notify_on_dm"]:
+        if value not in [0, 1]:
+            return False, f"{setting} must be 0 or 1."
+        
+    if setting in ["banner_color", "prompt_color"]:
+        valid_colors = ["red", "green", "yellow", "blue", "magenta", "cyan", "white"]
+        if value not in valid_colors:
+            return False, f"{setting} must be one of: red, green, yellow, blue, magenta, cyan, white."
+        
+    try:
+        cursor.execute(f"UPDATE settings SET {setting} = ? WHERE user_id = ?", (value, user_id))
+        connection.commit()
+
+        return True, f"{setting} updated successfully."
+    
+    except Exception as e:
+        return False, f"Error: {e}"
 
 def get_statistics():
     connection = connect_db()
