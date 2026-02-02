@@ -18,9 +18,24 @@ COLORS = {
     "gray": "\033[90m",
     "white": "\033[0m"
 }
-
 def get_color_code(color_name):
     return COLORS.get(color_name, COLORS["white"])
+
+
+WIDTH_Global = 80
+def get_terminal_width():
+    import auth, db
+
+    if auth.is_logged():
+        user = auth.get_current_user()
+        settings = db.get_user_settings(user["id"])
+        terminal_width = settings.get("terminal_width", WIDTH_Global)
+    
+    else:
+        terminal_width = WIDTH_Global
+
+    return terminal_width
+
 
 def hash_password(password, salt=None):
     if salt is None:
@@ -84,7 +99,7 @@ def print_info(message):
     print(f"\033[94m i {message}\033[0m")  # blue
 
 def print_separator():
-    print("\033[90m" + "-" * 82 + "\033[0m")  # gray
+    print("\033[90m" + "-" * (get_terminal_width()+2) + "\033[0m")  # gray
 
 
 def print_banner(color="cyan"):
@@ -288,7 +303,7 @@ def print_post(data):
     quote_content = data.get("quote_content", None)
     reposting_user = data.get("repost_username", None)
 
-    WIDTH = 80
+    WIDTH = get_terminal_width()
     
     print("╭" + "─" * WIDTH + "╮")
 
@@ -446,7 +461,7 @@ def print_profile(user, posts=None, pinned=None):
     is_verified = user.get("is_verified", 0)
     is_private = user.get("is_private", 0)
 
-    WIDTH = 80
+    WIDTH = get_terminal_width()
     
     icons = []
     
@@ -603,7 +618,7 @@ def print_comment(data):
     content = data.get("content", "")
     created = data.get("created", None)
 
-    WIDTH = 60
+    WIDTH = get_terminal_width() - (get_terminal_width() // 100 * 20)  # 25%
 
     def wrap_text(text, content_with_lines):
         lines = []
@@ -698,7 +713,7 @@ def print_comment(data):
 
 
 def print_settings(settings):
-    WIDTH = 80
+    WIDTH = get_terminal_width()
 
     print()
     print("╔" + "═" * WIDTH + "╗")
@@ -718,6 +733,7 @@ def print_settings(settings):
     print("║" + pad_line("  Display", WIDTH) + "║")
     print("║" + " " * WIDTH + "║")
     print("║" + pad_line(f"   posts_per_page: {settings.get('posts_per_page', 10)}", WIDTH) + "║")
+    print("║" + pad_line(f"   terminal_width: {settings.get('terminal_width', 80)}", WIDTH) + "║")
     print("║" + " " * WIDTH + "║")
 
     print("╠" + "═" * WIDTH + "╣")
@@ -766,6 +782,7 @@ def print_settings(settings):
 
     print("║" + pad_line(" Setting: 0 for Disabled, 1 for Enabled", WIDTH) + "║")    
     print("║" + pad_line(" Available colors: red, green, yellow, blue, magenta, cyan, white", WIDTH) + "║")
+    print("║" + pad_line(" Changing the terminal_width may result in display issues...", WIDTH) + "║")
 
     print("╚" + "═" * WIDTH + "╝")
     print()

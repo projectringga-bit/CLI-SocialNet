@@ -8,6 +8,7 @@ import posts
 import social
 import admin
 import ascii
+import level
 from utils import print_success, print_error, print_warning, print_info, print_separator, print_banner, print_post, print_comment, print_settings
 from utils import clear, get_color_code
 
@@ -79,6 +80,9 @@ dm <username> <message>                        -> Send a direct message to a use
 inbox                                          -> View your inbox
 messages <username>                            -> View messages with a specific user
 closedm <username>                             -> Close the conversation with a specific user
+xp                                             -> View your current XP and level
+achievements                                   -> View your achievements
+leaderboard [<limit>]                          -> View the XP leaderboard
 notifications                                  -> View your notifications
 alias [<alias> [<command>]]                    -> Create an alias for a command
 unalias <alias>                                -> Remove an alias
@@ -110,6 +114,7 @@ hsearch <query> [<page>]         -> Search for hashtags
 mentions <username> [<page>]     -> View posts mentioning a user
 likes <post_id>                  -> View likes on a post
 comments <post_id>               -> View comments on a post
+leaderboard [<limit>]            -> View the XP leaderboard
 
 [Other commands require you to be logged in]
 """)
@@ -1533,6 +1538,61 @@ def execute_command(command, args): # returns True (continue) or False (exit)
         social.display_notifications()
 
 
+    elif command == "xp":
+        if not auth.is_logged():
+            print_warning("You must be logged in to view your XP.")
+            return True
+        
+        if len(args) != 0:
+            print_error("Usage: xp")
+            return True
+        
+        sucess, message = level.show_xp()
+
+        if sucess:
+            pass
+        else:
+            print_error(message)
+
+
+    elif command == "achievements":
+        if not auth.is_logged():
+            print_warning("You must be logged in to view your achievements.")
+            return True
+        
+        if len(args) != 0:
+            print_error("Usage: achievements")
+            return True
+        
+        sucess, message = level.show_achievements()
+
+        if sucess:
+            pass
+        else:
+            print_error(message)
+
+    
+    elif command == "leaderboard":
+        if len(args) > 1:
+            print_error("Usage: leaderboard [<limit>]")
+            return True
+        
+        limit = 10
+        if len(args) == 1:
+            try:
+                limit = int(args[0])
+            except ValueError:
+                print_error("Limit must be a number.")
+                return True
+        
+        sucess, message = level.show_leaderboard(limit)
+
+        if sucess:
+            pass
+        else:
+            print_error(message)
+    
+
     elif command == "settings":
         if not auth.is_logged():
             print_warning("You must be logged in to view settings.")
@@ -1834,6 +1894,15 @@ def main():
                     notifications_str = "".join(notifications)
                 else:
                     notifications_str = ""
+
+                unlocked = level.check_achievements(user["id"])
+                if unlocked:
+                    for achievement in unlocked:
+                        print(f"\033[93mAchievement Unlocked: {achievement['name']} - {achievement['description']}\033[0m")
+
+                level_up, message = level.add_xp(user["id"], 0)
+                if level_up:
+                    print(message)
 
                 prompt = f"\n{get_color_code(prompt_color)}@{user['username']}{notifications_str}> {get_color_code("white")}"
             else:

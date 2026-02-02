@@ -1,6 +1,7 @@
 import db
 import auth
 import ascii
+import level
 from utils import print_profile, print_separator, print_error, print_info
 from utils import format_timestamp, wrap_text, pad_line
 
@@ -15,6 +16,10 @@ def follow(username):
         return False, "User not found."
     
     current_user = auth.get_current_user()
+
+    level_up, message = level.add_xp(current_user["id"], 5)
+    if level_up:
+        print(message)
 
     return db.follow_user(current_user["id"], target["id"])
 

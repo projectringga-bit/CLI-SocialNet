@@ -108,6 +108,14 @@ def init_db():
     command_aliases = db["command_aliases"]
     command_aliases.create_index([("user_id", ASCENDING), ("alias", ASCENDING)], unique=True)
 
+    user_xp = db["user_xp"]
+    user_xp.create_index("user_id", unique=True)
+    user_xp.create_index([("xp", DESCENDING)])
+    user_xp.create_index("level")
+
+    achievements = db["achievements"]
+    achievements.create_index([("user_id", ASCENDING), ("achievement_id", ASCENDING)], unique=True)
+
     settings = db["settings"]
     settings.create_index("user_id", unique=True)
 
@@ -862,6 +870,21 @@ def get_post_likes(post_id):
             })
 
     return results
+
+def get_user_likes_count(user_id):
+    db = connect_db()
+    likes = db["likes"]
+    posts = db["posts"]
+
+    user_posts = posts.find({"user_id": user_id, "deleted": 0})
+
+    post_ids = []
+    for post in user_posts:
+        post_ids.append(post["_id"])
+
+    count = likes.count_documents({"post_id": {"$in": post_ids}})
+
+    return count
 
 def get_posts_count(user_id):
     db = connect_db()
@@ -2141,6 +2164,111 @@ def get_admin_logs(limit, offset):
 
     return results
 
+def get_user_xp(user_id):
+    db = connect_db()
+    user_xp = db["user_xp"]
+
+    data = user_xp.find_one({"user_id": user_id})
+    if data is None:
+        xp_id = get_next_id("xp_id")
+
+        user_xp.insert_one({
+            "_id": xp_id,
+            "user_id": user_id,
+            "xp": 0,
+            "level": 1
+        })
+
+    data = user_xp.find_one({"user_id": user_id})
+
+    return dict(data)
+
+def update_user_xp(user_id, xp, level):
+    db = connect_db()
+    user_xp = db["user_xp"]
+
+    try:
+        user_xp.update_one(
+            {"user_id": user_id},
+            {"$set": {"xp": xp, "level": level}}
+        )
+        return True
+    
+    except Exception as e:
+        print(f"Error: {e}")
+        return False
+    
+def get_achievements_id(user_id):
+    db = connect_db()
+    achievements = db["achievements"]
+
+    results = []
+
+    cursor = achievements.find({"user_id": user_id})
+
+    for achievement in cursor:
+        results.append(achievement["achievement_id"])
+
+    return results
+
+def get_achievements(user_id):
+    db = connect_db()
+    achievements = db["achievements"]
+
+    results = []
+
+    cursor = achievements.find({"user_id": user_id})
+
+    for achievement in cursor:
+        results.append(dict(achievement))
+
+    return results
+
+def unlock_achievement(user_id, achievement_id):
+    db = connect_db()
+    achievements = db["achievements"]
+
+    now_timestamp = timestamp()
+
+    try:
+        existing = achievements.find_one({
+            "user_id": user_id,
+            "achievement_id": achievement_id
+        })
+        if existing:
+            return True
+        
+        achievements.insert_one({
+            "user_id": user_id,
+            "achievement_id": achievement_id,
+            "unlocked": now_timestamp
+        })
+        return True
+    
+    except Exception as e:
+        print(f"Error: {e}")
+        return False
+    
+def get_leaderboard(limit):
+    db = connect_db()
+    user_xp = db["user_xp"]
+    users = db["users"]
+
+    results = []
+
+    cursor = user_xp.find().sort("xp", DESCENDING).limit(limit)
+
+    for xp in cursor:
+        user = users.find_one({"_id": xp["user_id"]})
+        if user:
+            results.append({
+                "username": user["username"],
+                "xp": xp["xp"],
+                "level": xp["level"]
+            })
+
+    return results
+
 def get_user_settings(user_id):
     db = connect_db()
     settings = db["settings"]
@@ -2156,6 +2284,7 @@ def get_user_settings(user_id):
             "banner_color": "cyan",
             "prompt_color": "white",
             "posts_per_page": 10,
+            "terminal_width": 80,
             "notify_on_like": 1,
             "notify_on_comment": 1,
             "notify_on_follow": 1,
@@ -2178,6 +2307,7 @@ def update_settings(user_id, setting, value):
         "banner_color": str,
         "prompt_color": str,
         "posts_per_page": int,
+        "terminal_width": int,
         "notify_on_follow": int,
         "notify_on_like": int,
         "notify_on_comment": int,
@@ -2200,6 +2330,10 @@ def update_settings(user_id, setting, value):
     if setting == "posts_per_page":
         if value < 1 or value > 50:
             return False, f"{setting} must be between 1 and 50."
+        
+    if setting == "terminal_width":
+        if value < 40 or value > 200:
+            return False, f"{setting} must be between 40 and 200."
     
     if setting in ["notify_on_follow", "notify_on_like", "notify_on_comment", "notify_on_repost", "notify_on_mention", "notify_on_dm"]:
         if value not in [0, 1]:

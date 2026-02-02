@@ -1,6 +1,7 @@
 import db
 import auth
 import ascii
+import level
 from utils import print_post, print_separator, print_comment
 
 
@@ -37,6 +38,10 @@ def create_post(content, image_path=None, image_url=None):
         db.hashtag_detection(post_id, content)
         db.mention_detection(post_id, content, user["id"])
 
+        level_up, message = level.add_xp(user["id"], 10)
+        if level_up:
+            print(message)
+
         return True, f"Post created! ID: {result}"
     
     else:
@@ -68,6 +73,10 @@ def create_post_big(big_text, content=""):
         post_id = result
         db.hashtag_detection(post_id, content)
         db.mention_detection(post_id, content, user["id"])
+
+        level_up, message = level.add_xp(user["id"], 10)
+        if level_up:
+            print(message)
 
         return True, f"Post created! ID: {result}"
     
@@ -104,6 +113,10 @@ def create_poll_post(content, question, options):
         db.hashtag_detection(post_id, content)
         db.mention_detection(post_id, content, user["id"])
 
+        level_up, message = level.add_xp(user["id"], 10)
+        if level_up:
+            print(message)
+            
         return True, f"Poll post created! ID: {result}"
     
     else:
@@ -274,6 +287,10 @@ def repost(post_id):
     success, result = db.create_repost(user["id"], post_id)
     
     if success:
+        level_up, message = level.add_xp(user["id"], 5)
+        if level_up:
+            print(message)
+
         return True, f"Post #{post_id} reposted."
     else:
         return False, result
@@ -513,6 +530,10 @@ def like_post(post_id):
     success, result = db.like_post(user["id"], post_id)
 
     if success:
+        level_up, message = level.add_xp(user["id"], 2)
+        if level_up:
+            print(message)
+
         return True, f"Post #{post_id} liked."
     else:
         return False, result
@@ -568,6 +589,10 @@ def comment(post_id, content):
     success, result = db.create_comment(user["id"], post_id, content)
 
     if success:
+        level_up, message = level.add_xp(user["id"], 2)
+        if level_up:
+            print(message)
+            
         return True, f"Comment added to post #{post_id}."
     else:
         return False, result

@@ -241,6 +241,23 @@ def init_db():
                    "FOREIGN KEY (user_id) REFERENCES users(id)," \
                    "UNIQUE(user_id, alias))")
     
+    # User xp table
+    cursor.execute("CREATE TABLE IF NOT EXISTS user_xp (" \
+                   "id INTEGER PRIMARY KEY AUTOINCREMENT," \
+                   "user_id INTEGER NOT NULL," \
+                   "xp INTEGER DEFAULT 0," \
+                   "level INTEGER DEFAULT 1," \
+                   "FOREIGN KEY (user_id) REFERENCES users(id))")
+    
+    # Achievements table
+    cursor.execute("CREATE TABLE IF NOT EXISTS achievements (" \
+                   "id INTEGER PRIMARY KEY AUTOINCREMENT," \
+                   "user_id INTEGER NOT NULL," \
+                   "achievement_id TEXT NOT NULL," \
+                   "unlocked INTEGER NOT NULL," \
+                   "FOREIGN KEY (user_id) REFERENCES users(id)," \
+                   "UNIQUE(user_id, achievement_id))")
+    
     # Settings table
     cursor.execute("CREATE TABLE IF NOT EXISTS settings (" \
                    "id INTEGER PRIMARY KEY AUTOINCREMENT," \
@@ -248,6 +265,7 @@ def init_db():
                    "banner_color TEXT DEFAULT 'cyan'," \
                    "prompt_color TEXT DEFAULT 'white'," \
                    "posts_per_page INTEGER DEFAULT 10," \
+                   "terminal_width INTEGER DEFAULT 80," \
                    "notify_on_like INTEGER DEFAULT 1," \
                    "notify_on_comment INTEGER DEFAULT 1," \
                    "notify_on_follow INTEGER DEFAULT 1," \
@@ -610,7 +628,7 @@ def get_global_feed_posts(limit=10, offset=0, viewer_id=None):
                        "(SELECT COUNT(*) FROM likes WHERE likes.post_id = posts.id) AS like_count," \
                        "(SELECT COUNT(*) FROM comments WHERE comments.post_id = posts.id) AS comment_count," \
                        "(SELECT COUNT(*) FROM reposts WHERE reposts.post_id = posts.id and reposts.is_deleted = 0) AS repost_count " \
-                       "FROM posts JOIN users ON posts.user_id = users.id WHERE posts.deleted = 0 AND (users.is_private = 0 OR (EXISTS (SELECT 1 FROM follows WHERE follower_id = ? AND followed_id = users.id) AND EXISTS (SELECT 1 FROM follows WHERE follower_id = users.id AND followed_id = ?))) ORDER BY posts.created DESC LIMIT ? OFFSET ?", (viewer_id, viewer_id, limit, offset))
+                       "FROM posts JOIN users ON posts.user_id = users.id WHERE posts.deleted = 0 AND (users.is_private = 0 OR posts.user_id = ? OR (EXISTS (SELECT 1 FROM follows WHERE follower_id = ? AND followed_id = users.id) AND EXISTS (SELECT 1 FROM follows WHERE follower_id = users.id AND followed_id = ?))) ORDER BY posts.created DESC LIMIT ? OFFSET ?", (viewer_id, viewer_id, viewer_id, limit, offset))
     results = []
     for row in cursor.fetchall():
         results.append(dict(row))
@@ -726,6 +744,17 @@ def get_post_likes(post_id):
         results.append(dict(row))
 
     return results
+
+def get_user_likes_count(user_id):
+    connection = connect_db()
+    cursor = connection.cursor()
+
+    cursor.execute("SELECT COUNT(*) AS count FROM likes JOIN posts ON likes.post_id = posts.id WHERE posts.user_id = ?", (user_id,))
+    row = cursor.fetchone()
+    if row is None:
+        return 0
+    
+    return row["count"]
 
 def get_posts_count(user_id):
     connection = connect_db()
@@ -902,7 +931,7 @@ def get_posts_using_hashtag(hashtag, limit=10, offset=0, viewer_id=None):
                        "(SELECT COUNT(*) FROM likes WHERE likes.post_id = posts.id) AS like_count," \
                        "(SELECT COUNT(*) FROM comments WHERE comments.post_id = posts.id) AS comment_count," \
                        "(SELECT COUNT(*) FROM reposts WHERE reposts.post_id = posts.id and reposts.is_deleted = 0) AS repost_count " \
-                       "FROM posts JOIN users ON posts.user_id = users.id JOIN post_hashtags ON posts.id = post_hashtags.post_id JOIN hashtags ON post_hashtags.hashtag_id = hashtags.id WHERE hashtags.hashtag = ? AND posts.deleted = 0 AND users.is_banned = 0 AND (users.is_private = 0 OR (EXISTS (SELECT 1 FROM follows WHERE follower_id = ? AND followed_id = users.id) AND EXISTS (SELECT 1 FROM follows WHERE follower_id = users.id AND followed_id = ?))) ORDER BY posts.created DESC LIMIT ? OFFSET ?", (hashtag_lower, viewer_id, viewer_id, limit, offset))
+                       "FROM posts JOIN users ON posts.user_id = users.id JOIN post_hashtags ON posts.id = post_hashtags.post_id JOIN hashtags ON post_hashtags.hashtag_id = hashtags.id WHERE hashtags.hashtag = ? AND posts.deleted = 0 AND users.is_banned = 0 AND (users.is_private = 0  OR posts.user_id = ? OR (EXISTS (SELECT 1 FROM follows WHERE follower_id = ? AND followed_id = users.id) AND EXISTS (SELECT 1 FROM follows WHERE follower_id = users.id AND followed_id = ?))) ORDER BY posts.created DESC LIMIT ? OFFSET ?", (hashtag_lower, viewer_id, viewer_id, viewer_id, limit, offset))
     
     results = []
     for row in cursor.fetchall():
@@ -973,7 +1002,7 @@ def get_posts_mentioning_username(user_id, limit=10, offset=0, viewer_id=None):
                        "(SELECT COUNT(*) FROM likes WHERE likes.post_id = posts.id) AS like_count," \
                        "(SELECT COUNT(*) FROM comments WHERE comments.post_id = posts.id) AS comment_count," \
                        "(SELECT COUNT(*) FROM reposts WHERE reposts.post_id = posts.id and reposts.is_deleted = 0) AS repost_count " \
-                       "FROM mentions JOIN posts ON mentions.post_id = posts.id JOIN users ON posts.user_id = users.id WHERE mentions.mentioned_user = ? AND posts.deleted = 0 AND (users.is_private = 0 OR (EXISTS (SELECT 1 FROM follows WHERE follower_id = ? AND followed_id = users.id) AND EXISTS (SELECT 1 FROM follows WHERE follower_id = users.id AND followed_id = ?))) ORDER BY posts.created DESC LIMIT ? OFFSET ?", (user_id, viewer_id, viewer_id, limit, offset))
+                       "FROM mentions JOIN posts ON mentions.post_id = posts.id JOIN users ON posts.user_id = users.id WHERE mentions.mentioned_user = ? AND posts.deleted = 0 AND (users.is_private = 0 OR posts.user_id = ? OR (EXISTS (SELECT 1 FROM follows WHERE follower_id = ? AND followed_id = users.id) AND EXISTS (SELECT 1 FROM follows WHERE follower_id = users.id AND followed_id = ?))) ORDER BY posts.created DESC LIMIT ? OFFSET ?", (user_id, viewer_id, viewer_id, viewer_id, limit, offset))
 
     results = []
     for row in cursor.fetchall():
@@ -1262,7 +1291,7 @@ def search_posts(query, limit=10, offset=0, viewer_id=None):
                        "(SELECT COUNT(*) FROM likes WHERE likes.post_id = posts.id) AS like_count," \
                        "(SELECT COUNT(*) FROM comments WHERE comments.post_id = posts.id) AS comment_count," \
                        "(SELECT COUNT(*) FROM reposts WHERE reposts.post_id = posts.id and reposts.is_deleted = 0) AS repost_count " \
-                       "FROM posts JOIN users ON posts.user_id = users.id WHERE LOWER(posts.content) LIKE ? AND posts.deleted = 0 AND (users.is_private = 0 OR (EXISTS (SELECT 1 FROM follows WHERE follower_id = ? AND followed_id = users.id) AND EXISTS (SELECT 1 FROM follows WHERE follower_id = users.id AND followed_id = ?))) ORDER BY posts.created DESC LIMIT ? OFFSET ?", (search_query, viewer_id, viewer_id, limit, offset))
+                       "FROM posts JOIN users ON posts.user_id = users.id WHERE LOWER(posts.content) LIKE ? AND posts.deleted = 0 AND (users.is_private = 0 OR posts.user_id = ? OR (EXISTS (SELECT 1 FROM follows WHERE follower_id = ? AND followed_id = users.id) AND EXISTS (SELECT 1 FROM follows WHERE follower_id = users.id AND followed_id = ?))) ORDER BY posts.created DESC LIMIT ? OFFSET ?", (search_query, viewer_id, viewer_id, viewer_id, limit, offset))
         
     results = []
     for row in cursor.fetchall():
@@ -1583,6 +1612,84 @@ def get_admin_logs(limit, offset):
 
     return results
 
+def get_user_xp(user_id):
+    connection = connect_db()
+    cursor = connection.cursor()
+
+    cursor.execute("SELECT xp, level FROM user_xp WHERE user_id = ?", (user_id,))
+    row = cursor.fetchone()
+    if row is None:
+        cursor.execute("INSERT INTO user_xp (user_id, xp, level) VALUES (?, ?, ?)", (user_id, 0, 1))
+        connection.commit()
+
+        cursor.execute("SELECT xp, level FROM user_xp WHERE user_id = ?", (user_id,))
+        row = cursor.fetchone()
+
+    return dict(row)
+
+def update_user_xp(user_id, xp, level):
+    connection = connect_db()
+    cursor = connection.cursor()
+
+    try:
+        cursor.execute("UPDATE user_xp SET xp = ?, level = ? WHERE user_id = ?", (xp, level, user_id))
+        connection.commit()
+        return True
+    
+    except Exception as e:
+        print(f"Error: {e}")
+        return False
+    
+def get_achievements_id(user_id):
+    connection = connect_db()
+    cursor = connection.cursor()
+
+    cursor.execute("SELECT achievement_id FROM achievements WHERE user_id = ?", (user_id,))
+
+    results = []
+    for row in cursor.fetchall():
+        results.append(row["achievement_id"])
+    
+    return results
+
+def get_achievements(user_id):
+    connection = connect_db()
+    cursor = connection.cursor()
+
+    cursor.execute("SELECT achievement_id, unlocked FROM achievements WHERE user_id = ?", (user_id,))
+
+    results = []
+    for row in cursor.fetchall():
+        results.append(dict(row))
+
+    return results
+    
+def unlock_achievement(user_id, achievement_id):
+    connection = connect_db()
+    cursor = connection.cursor()
+
+    now_timestamp = timestamp()
+
+    try:
+        cursor.execute("INSERT OR IGNORE INTO achievements (user_id, achievement_id, unlocked) VALUES (?, ?, ?)", (user_id, achievement_id, now_timestamp))
+        connection.commit()
+        return True
+    
+    except Exception as e:
+        print(f"Error: {e}")
+        return False
+    
+def get_leaderboard(limit):
+    connection = connect_db()
+    cursor = connection.cursor()
+
+    cursor.execute("SELECT users.username, user_xp.xp, user_xp.level FROM user_xp JOIN users ON user_xp.user_id = users.id ORDER BY user_xp.xp DESC LIMIT ?", (limit,))
+    results = []
+    for row in cursor.fetchall():
+        results.append(dict(row))
+    
+    return results
+
 def get_user_settings(user_id):
     connection = connect_db()
     cursor = connection.cursor()
@@ -1590,7 +1697,7 @@ def get_user_settings(user_id):
     cursor.execute("SELECT * FROM settings WHERE user_id = ?", (user_id,))
     row = cursor.fetchone()
     if row is None:
-        cursor.execute("INSERT INTO settings (user_id, banner_color, prompt_color, posts_per_page, notify_on_follow, notify_on_like, notify_on_comment, notify_on_repost, notify_on_mention, notify_on_dm) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)", (user_id, "cyan", "white", 10, 1, 1, 1, 1, 1, 1))
+        cursor.execute("INSERT INTO settings (user_id, banner_color, prompt_color, posts_per_page, terminal_width, notify_on_follow, notify_on_like, notify_on_comment, notify_on_repost, notify_on_mention, notify_on_dm) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)", (user_id, "cyan", "white", 10, 80, 1, 1, 1, 1, 1, 1))
         connection.commit()
 
         cursor.execute("SELECT * FROM settings WHERE user_id = ?", (user_id,))
@@ -1607,6 +1714,7 @@ def update_settings(user_id, setting, value):
         "banner_color": str,
         "prompt_color": str,
         "posts_per_page": int,
+        "terminal_width": int,
         "notify_on_follow": int,
         "notify_on_like": int,
         "notify_on_comment": int,
@@ -1629,6 +1737,10 @@ def update_settings(user_id, setting, value):
     if setting == "posts_per_page":
         if value < 1 or value > 50:
             return False, f"{setting} must be between 1 and 50."
+        
+    if setting == "terminal_width":
+        if value < 40 or value > 200:
+            return False, f"{setting} must be between 40 and 200."
     
     if setting in ["notify_on_follow", "notify_on_like", "notify_on_comment", "notify_on_repost", "notify_on_mention", "notify_on_dm"]:
         if value not in [0, 1]:
