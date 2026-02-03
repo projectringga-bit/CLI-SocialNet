@@ -116,6 +116,11 @@ def init_db():
     achievements = db["achievements"]
     achievements.create_index([("user_id", ASCENDING), ("achievement_id", ASCENDING)], unique=True)
 
+    reports = db["reports"]
+    reports.create_index("reporter_id")
+    reports.create_index([("status", ASCENDING), ("created", DESCENDING)])
+    reports.create_index([("reporter_id", ASCENDING), ("type", ASCENDING), ("target_id", ASCENDING)])
+
     settings = db["settings"]
     settings.create_index("user_id", unique=True)
 
@@ -2268,6 +2273,119 @@ def get_leaderboard(limit):
             })
 
     return results
+
+def create_report(reporter_id, type, target_id, reason):
+    db = connect_db()
+    reports = db["reports"]
+
+    now_timestamp = timestamp()
+
+    try:
+        report_id = get_next_id("report_id")
+
+        reports.insert_one({
+            "_id": report_id,
+            "reporter_id": reporter_id,
+            "type": type,
+            "target_id": target_id,
+            "reason": reason,
+            "status": "pending",
+            "reviewed_by": None,
+            "reviewed_at": None,
+            "created": now_timestamp
+        })
+        return True, report_id
+    
+    except Exception as e:
+        return False, f"Error: {e}"
+    
+def get_reports(status, limit, offset):
+    db = connect_db()
+    reports = db["reports"]
+    users = db["users"]
+
+    results = []
+
+    cursor = reports.find({"status": status}).sort("created", DESCENDING).skip(offset).limit(limit)
+
+    for report in cursor:
+        report_dictionary = dict(report)
+        report_dictionary["id"] = report_dictionary["_id"]
+
+        reporter = users.find_one({"_id": report["reporter_id"]})
+        if reporter:
+            report_dictionary["reporter_username"] = reporter["username"]
+        else:
+            report_dictionary["reporter_username"] = ""
+        
+        results.append(report_dictionary)
+
+    return results
+
+def get_report(report_id):
+    db = connect_db()
+    reports = db["reports"]
+    users = db["users"]
+
+    report = reports.find_one({"_id": report_id})
+    if report is None:
+        return None
+    
+    report_dictionary = dict(report)
+    report_dictionary["id"] = report_dictionary["_id"]
+
+    reporter = users.find_one({"_id": report["reporter_id"]})
+    if reporter:
+        report_dictionary["reporter_username"] = reporter["username"]
+    else:
+        report_dictionary["reporter_username"] = ""
+    
+    return report_dictionary
+
+def update_report(report_id, status, user_id):
+    db = connect_db()
+    reports = db["reports"]
+
+    now_timestamp = timestamp()
+
+    try:
+        reports.update_one(
+            {"_id": report_id},
+            {"$set": {
+                "status": status,   
+                "reviewed_by": user_id,
+                "reviewed_at": now_timestamp
+            }}
+        )
+        return True
+    
+    except Exception as e:
+        print(f"Error: {e}")
+        return False
+    
+def get_pending_reports_count():
+    db = connect_db()
+    reports = db["reports"]
+
+    count = reports.count_documents({"status": "pending"})
+    if count is None:
+        return 0
+
+    return count
+
+def already_reported(reporter_id, type, target_id):
+    db = connect_db()
+    reports = db["reports"]
+
+    report = reports.find_one({
+        "reporter_id": reporter_id,
+        "type": type,
+        "target_id": target_id,
+    })
+    if report:
+        return True
+    
+    return False
 
 def get_user_settings(user_id):
     db = connect_db()

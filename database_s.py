@@ -258,6 +258,20 @@ def init_db():
                    "FOREIGN KEY (user_id) REFERENCES users(id)," \
                    "UNIQUE(user_id, achievement_id))")
     
+    # Reports table
+    cursor.execute("CREATE TABLE IF NOT EXISTS reports (" \
+                   "id INTEGER PRIMARY KEY AUTOINCREMENT," \
+                   "reporter_id INTEGER NOT NULL," \
+                   "type TEXT NOT NULL," \
+                   "target_id TEXT NOT NULL," \
+                   "reason TEXT NOT NULL," \
+                   "status TEXT DEFAULT 'pending'," \
+                   "reviewed_by INTEGER," \
+                   "reviewed_at INTEGER," \
+                   "created INTEGER NOT NULL," \
+                   "FOREIGN KEY (reporter_id) REFERENCES users(id)," \
+                   "FOREIGN KEY (reviewed_by) REFERENCES users(id))")
+    
     # Settings table
     cursor.execute("CREATE TABLE IF NOT EXISTS settings (" \
                    "id INTEGER PRIMARY KEY AUTOINCREMENT," \
@@ -1689,6 +1703,80 @@ def get_leaderboard(limit):
         results.append(dict(row))
     
     return results
+
+def create_report(reporter_id, type, target_id, reason):
+    connection = connect_db()
+    cursor = connection.cursor()
+
+    now_timestamp = timestamp()
+
+    try:
+        cursor.execute("INSERT INTO reports (reporter_id, type, target_id, reason, created) VALUES (?, ?, ?, ?, ?)", (reporter_id, type, target_id, reason, now_timestamp))
+        connection.commit()
+        return True, cursor.lastrowid
+    
+    except Exception as e:
+        return False, f"Error: {e}"
+    
+def get_reports(status, limit, offset):
+    connection = connect_db()
+    cursor = connection.cursor()
+
+    cursor.execute("SELECT reports.*, users.username AS reporter_username FROM reports JOIN users ON reports.reporter_id = users.id WHERE reports.status = ? ORDER BY reports.created DESC LIMIT ? OFFSET ?", (status, limit, offset))
+
+    results = []
+    for row in cursor.fetchall():
+        results.append(dict(row))
+
+    return results
+
+def get_report(report_id):
+    connection = connect_db()
+    cursor = connection.cursor()
+
+    cursor.execute("SELECT reports.*, users.username AS reporter_username FROM reports JOIN users ON reports.reporter_id = users.id WHERE reports.id = ?", (report_id,))
+    row = cursor.fetchone()
+    if row is None:
+        return None
+    
+    return dict(row)
+
+def update_report(report_id, status, user_id):
+    connection = connect_db()
+    cursor = connection.cursor()
+
+    now_timestamp = timestamp()
+
+    try:
+        cursor.execute("UPDATE reports SET status = ?, reviewed_by = ?, reviewed_at = ? WHERE id = ?", (status, user_id, now_timestamp, report_id))
+        connection.commit()
+        return True
+    
+    except Exception as e:
+        print(f"Error: {e}")
+        return False
+    
+def get_pending_reports_count():
+    connection = connect_db()
+    cursor = connection.cursor()
+
+    cursor.execute("SELECT COUNT(*) AS count FROM reports WHERE status = 'pending'")
+    row = cursor.fetchone()
+    if row is None:
+        return 0
+    
+    return row["count"]
+
+def already_reported(reporter_id, type, target_id):
+    connection = connect_db()
+    cursor = connection.cursor()
+
+    cursor.execute("SELECT id FROM reports WHERE reporter_id = ? AND type = ? AND target_id = ?", (reporter_id, type, target_id))
+    row = cursor.fetchone()
+    if row is None:
+        return False
+    
+    return True
 
 def get_user_settings(user_id):
     connection = connect_db()

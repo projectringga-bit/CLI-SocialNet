@@ -86,6 +86,7 @@ leaderboard [<limit>]                          -> View the XP leaderboard
 notifications                                  -> View your notifications
 alias [<alias> [<command>]]                    -> Create an alias for a command
 unalias <alias>                                -> Remove an alias
+report <post/comment/user> <id/user> <reason>  -> Report a post, comment, or user
 clearn                                         -> Clear your notifications
 settings                                       -> View your settings
 setting <setting_name> <new_value>             -> Change a specific setting
@@ -1694,6 +1695,42 @@ def execute_command(command, args): # returns True (continue) or False (exit)
             print_error(message)
 
 
+    elif command == "report":
+        if not auth.is_logged():
+            print_warning("You must be logged in to report.")
+            return True
+        
+        if len(args) < 3:
+            print_error("Usage: report <post/comment/user> <id/username> <reason>")
+            return True
+        
+        type = args[0].lower()
+        if type not in ["post", "comment", "user"]:
+            print_error("Type must be 'post', 'comment', or 'user'.")
+            return True
+        
+        target = args[1]
+
+        reason = " ".join(args[2:])
+
+        if type == "post":
+            target_id = int(target)
+            success, message = admin.report_post(target_id, reason)
+
+        elif type == "comment":
+            target_id = int(target)
+            success, message = admin.report_comment(target_id, reason)
+
+        elif type == "user":
+            username = target.lstrip('@')
+            success, message = admin.report_user(username, reason)
+
+        if success:
+            print_success(message)
+        else:
+            print_error(message)
+
+
     # Admin commands
     elif command == "admin":
         if not auth.is_logged() or not auth.is_admin():
@@ -1802,6 +1839,55 @@ def execute_command(command, args): # returns True (continue) or False (exit)
             username = args[0].lstrip('@')
 
             success, message = admin.unverify_user(username)
+
+            if success:
+                print_success(message)
+            else:
+                print_error(message)
+
+        elif subcommand == "reports":
+            page = 1
+            status = "pending"
+
+            if len(args) > 0:
+                if args[0].lower() in ["pending", "resolved", "dismissed"]:
+                    status = args[0].lower()
+                    
+                    if len(args) > 1:
+                        page = int(args[1])
+
+                else:
+                    try:
+                        page = int(args[0])
+
+                    except ValueError:
+                        print_error("Usage: admin reports [<status>] [<page>]")
+                        return True
+                    
+            admin.print_reports(status, page)
+
+        elif subcommand == "resolve":
+            if len(args) != 1:
+                print_error("Usage: admin resolve <report_id>")
+                return True
+            
+            report_id = int(args[0])
+
+            success, message = admin.resolve_report(report_id)
+
+            if success:
+                print_success(message)
+            else:
+                print_error(message)
+
+        elif subcommand == "dismiss":
+            if len(args) != 1:
+                print_error("Usage: admin dismiss <report_id>")
+                return True
+            
+            report_id = int(args[0])
+
+            success, message = admin.dismiss_report(report_id)
 
             if success:
                 print_success(message)

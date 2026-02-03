@@ -1,5 +1,5 @@
 # DATABASE CONFIGURATION
-DATABASE = "mongodb" # Options: "sqlite" or "mongodb"
+DATABASE = "sqlite" # Options: "sqlite" or "mongodb"
 
 SQL_PATH = "socialnet.db"
 

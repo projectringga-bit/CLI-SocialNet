@@ -146,6 +146,110 @@ def unverify_user(username):
     return True, f"User @{username} has been unverified."
 
 
+def report_post(target, reason):
+    if not auth.is_logged():
+        return False, "You must be logged in."
+    
+    post = db.get_post(target)
+    if post is None:
+        return False, "Post not found."
+    
+    user = auth.get_current_user()
+
+    if db.already_reported(user["id"], "post", target):
+        return False, "You have already reported this post."
+    
+    db.create_report(user["id"], "post", target, reason)
+
+    return True, "The post has been reported to the admins."
+
+
+def report_comment(target, reason):
+    if not auth.is_logged():
+        return False, "You must be logged in."
+    
+    comment = db.get_comment(target)
+    if comment is None:
+        return False, "Comment not found."
+    
+    user = auth.get_current_user()
+
+    if db.already_reported(user["id"], "comment", target):
+        return False, "You have already reported this comment."
+    
+    db.create_report(user["id"], "comment", target, reason)
+
+    return True, "The comment has been reported to the admins."
+
+
+def report_user(username, reason):
+    if not auth.is_logged():
+        return False, "You must be logged in."
+    
+    target = db.get_user_by_username(username)
+    if target is None:
+        return False, "User not found."
+    
+    user = auth.get_current_user()
+
+    if db.already_reported(user["id"], "user", target["id"]):
+        return False, "You have already reported this user."
+    
+    db.create_report(user["id"], "user", target["id"], reason)
+
+    return True, "The user has been reported to the admins."
+
+
+def view_report(report_id):
+    if not auth.is_admin():
+        return False, "Admin privileges required."
+    
+    report = db.get_report(report_id)
+    if report is None:
+        return False, "Report not found."
+    
+    return True, report
+
+def resolve_report(report_id):
+    if not auth.is_admin():
+        return False, "Admin privileges required."
+    
+    report = db.get_report(report_id)
+    if report is None:
+        return False, "Report not found."
+    
+    if report["status"] != "pending":
+        return False, "Report has already been resolved."
+    
+    user = auth.get_current_user()
+
+    db.update_report(report_id, "resolved", user["id"])
+    
+    db.admin_log(user["id"], "resolve_report", f"Report ID = {report_id}", f"Resolved report #{report_id}")
+    
+    return True, f"Report #{report_id} has been resolved."
+
+
+def dismiss_report(report_id):
+    if not auth.is_admin():
+        return False, "Admin privileges required."
+    
+    report = db.get_report(report_id)
+    if report is None:
+        return False, "Report not found."
+    
+    if report["status"] != "pending":
+        return False, "Report has already been resolved."
+    
+    user = auth.get_current_user()
+
+    db.update_report(report_id, "dismissed", user["id"])
+    
+    db.admin_log(user["id"], "dismiss_report", f"Report ID = {report_id}", f"Dismissed report #{report_id}")
+    
+    return True, f"Report #{report_id} has been dismissed."
+
+
 def get_stats():
     if not auth.is_admin():
         return None
@@ -190,6 +294,9 @@ def print_banner_admin():
     print("║" + pad_line(f"    Total Follows:   {stats["follow_count"]}", WIDTH) + "║")
     print("║" + pad_line(f"    Total Comments:  {stats["comment_count"]}", WIDTH) + "║")
     print("║" + pad_line(f"    Total Reposts:   {stats["repost_count"]}", WIDTH) + "║")
+
+    pending_reports = db.get_pending_reports_count()
+    print("║" + pad_line(f"    Pending Reports: {pending_reports}", WIDTH) + "║")
     print("║" + " " * WIDTH + "║")
     
     print("╠" + "═" * WIDTH + "╣")
@@ -205,11 +312,65 @@ def print_banner_admin():
         "admin removeadmin <username>       -> Revoke admin privileges from a user",
         "admin verify <username>            -> Verify a user",
         "admin unverify <username>          -> Unverify a user",
+        "admin reports [<status>] [<page>]  -> View reports",
+        "admin resolve <report_id>          -> Resolve a report",
+        "admin dismiss <report_id>          -> Dismiss a report",
         "admin logs [<page>]                -> View admin logs"
     ]
 
     for command in commands:
         print("║" + pad_line(f"    {command}", WIDTH) + "║")
+    
+    print("║" + " " * WIDTH + "║")
+    print("╚" + "═" * WIDTH + "╝")
+
+
+def print_reports(status, page):
+    if not auth.is_admin():
+        return
+    
+    offset = (page - 1) * 20
+    reports = db.get_reports(status=status, limit=20, offset=offset)
+    if not reports:
+        print_warning("No reports found.")
+        return
+    
+    count = db.get_pending_reports_count()
+
+    WIDTH = 80
+
+    print()
+    print("╔" + "═" * WIDTH + "╗")
+    title_l = f" REPORTS - {status.upper()} (Page {page})"
+    title_pad = (WIDTH - len(title_l)) // 2
+    print("║" + " " * title_pad + title_l + " " * (WIDTH - len(title_l) - title_pad) + "║")
+
+    print("╠" + "═" * WIDTH + "╣")
+
+    if status == "pending":
+        print("║" + pad_line(f"  Total Pending Reports: {count}", WIDTH) + "║")
+        print("║" + " " * WIDTH + "║")
+
+    for report in reports:
+        format_time = format_timestamp(report["created"])
+
+        if report["type"] == "post":
+            target_info = f"Post #{report['target_id']}"
+
+        elif report["type"] == "comment":
+            target_info = f"Comment #{report['target_id']}"
+
+        elif report["type"] == "user":
+            user = db.get_user_by_id(report["target_id"])
+            target_info = f"User @{user['username']}"
+        
+        print("║" + pad_line(f" Report ID: #{report['id']} | Type: {report['type']} | {format_time}", WIDTH) + "║")
+        print("║" + pad_line(f"  Target: {target_info}", WIDTH) + "║")
+        print("║" + pad_line(f"  Reported by: @{report['reporter_username']}", WIDTH) + "║")
+        print("║" + pad_line(f"  Reason: {report['reason']}", WIDTH) + "║")
+        print("║" + pad_line(f"  Status: {report['status']}", WIDTH) + "║")
+        print("║" + " " * WIDTH + "║")
+
     print("╚" + "═" * WIDTH + "╝")
 
 
