@@ -2,7 +2,8 @@ import sqlite3
 import re
 
 from utils import hash_password, timestamp
-from config import DEFAULT_ADMIN_PASSWORD
+from config_loader import SQL_PATH
+from config_loader import DEFAULT_ADMIN_PASSWORD
 
 
 db_connection = None
@@ -10,7 +11,7 @@ db_connection = None
 def connect_db():
     global db_connection
 
-    db_connection = sqlite3.connect("socialnet.db")
+    db_connection = sqlite3.connect(SQL_PATH)
     db_connection.row_factory = sqlite3.Row
 
     return db_connection

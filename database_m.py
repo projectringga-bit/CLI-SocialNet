@@ -4,8 +4,8 @@ from pymongo import ReturnDocument
 import re
 
 from utils import hash_password, timestamp
-from config import MONGODB_URI, MONGODB_NAME
-from config import DEFAULT_ADMIN_PASSWORD
+from config_loader import MONGODB_URI, MONGODB_NAME
+from config_loader import DEFAULT_ADMIN_PASSWORD
 
 mongo_client = None
 mongo_database = None

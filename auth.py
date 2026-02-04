@@ -4,7 +4,7 @@ import uuid
 import platform
 
 import db
-from config import ENABLE_REGISTRATION_LIMIT
+from config_loader import ENABLE_REGISTRATION_LIMIT
 from utils import verify_password, validate_username, validate_password, generate_token, timestamp
 
 

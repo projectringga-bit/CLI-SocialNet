@@ -386,10 +386,15 @@ def print_post(data):
 
                     truncated_line += char
                     current_width += char_length
+
+                line_width = visible_width(truncated_line)
+                line_pad = (WIDTH - line_width) // 2
                 
-                print("│" + pad_line(truncated_line, WIDTH) + "│")
+                print("│" + " " * line_pad + truncated_line + " " * (WIDTH - line_pad - line_width) + "│")
             else:
-                print("│" + pad_line(line, WIDTH) + "│")
+                line_width = visible_width(line)
+                line_pad = (WIDTH - line_width) // 2
+                print("│" + " " * line_pad + line + " " * (WIDTH - line_pad - line_width) + "│")
 
     print("│" + " " * WIDTH + "│")
 

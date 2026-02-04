@@ -65,7 +65,7 @@ ACHIEVEMENTS = [
     },
     {
         "id": "celebrity",
-        "name": "Celebrity",\
+        "name": "Celebrity",
         "description": "Get 1000 followers.",
         "xp": 5000,
         "condition": lambda user_id: db.get_followers_count(user_id) >= 1000

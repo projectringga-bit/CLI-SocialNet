@@ -1,0 +1,8 @@
+{
+    "DATABASE": "sqlite",
+    "SQL_PATH": "socialnet.db",
+    "MONGODB_URI": "mongodb://localhost:27017/",
+    "MONGODB_NAME": "socialnet",
+    "ENABLE_REGISTRATION_LIMIT": true,
+    "DEFAULT_ADMIN_PASSWORD": "admin123"
+}

@@ -1,4 +1,4 @@
-from config import DATABASE
+from config_loader import DATABASE
 
 if DATABASE == "sqlite":
     from database_s import *
