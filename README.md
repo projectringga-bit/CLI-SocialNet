@@ -143,6 +143,8 @@ A terminal-based social networking platform written in Python. Connect, share, a
 | leaderboard | View top players | `leaderboard [limit]` |
 
 ### Reports:
+| Command | Description | Usage |
+|---------|-------------|-------|
 | report | Report a post | `report <post/comment/user> <id/user> <reason>` |
 
 ### Notifications and Settings:
